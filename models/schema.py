@@ -1,0 +1,75 @@
+from __future__ import annotations
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator, model_validator
+from datetime import date
+
+class StatementItem(BaseModel):
+    statementDate: date
+    statementAmount: float = Field(gt=0, description="Absolute amount; sign captured by statementType")
+    statementType: Literal["credit", "debit"]
+    statementDescription: str = Field(default="")
+    statementBalance: float
+    statementNotes: str | None = None
+
+    model_config = {
+        "extra": "forbid",
+    }
+
+    @field_validator("statementDescription", mode="before")
+    @classmethod
+    def _strip_description(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    @field_validator("statementNotes", mode="before")
+    @classmethod
+    def _strip_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s or None
+
+class ParsedStatement(BaseModel):
+    accountName: str
+    accountNo: str
+    accountType: str | None = None
+    statementFrom: date
+    statementTo: date
+    bankName: str
+    statements: list[StatementItem]
+
+    model_config = {
+        "extra": "forbid",
+    }
+
+    @field_validator("accountName", "bankName", "accountType", mode="before")
+    @classmethod
+    def _strip_strings(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s or None
+
+    @field_validator("statements", mode="before")
+    @classmethod
+    def _ensure_list(cls, value):
+        if value is None:
+            return []
+        return value
+
+    @field_validator("accountNo")
+    @classmethod
+    def _validate_account_no(cls, value: int) -> int:
+        digits = len(str(abs(value)))
+        if digits < 6 or digits > 20:
+            raise ValueError("accountNo must be between 6 and 20 digits")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_dates_and_items(self) -> "ParsedStatement":
+        if self.statementFrom > self.statementTo:
+            raise ValueError("statementFrom must be on or before statementTo")
+        for item in self.statements:
+            if item.statementDate < self.statementFrom or item.statementDate > self.statementTo:
+                raise ValueError("statementDate must be within the provided statementFrom and statementTo range")
+        return self
+

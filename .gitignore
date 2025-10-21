@@ -1,2 +1,16 @@
 *.env
 .cursor/*
+venv/*
+.venv/*
+__pycache__/*
+.pytest_cache/*
+.streamlit/*
+.vscode/*
+.idea/*
+.DS_Store
+.env.development
+.env.staging
+.env.production
+.env.test
+*.pyc
+*.log
