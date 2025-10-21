@@ -60,6 +60,7 @@ Each uploaded statement is parsed into a structured JSON:
     }
   ]
 }
+```
 
 ## Architecture Overview
 
