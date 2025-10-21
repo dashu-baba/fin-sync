@@ -1,0 +1,31 @@
+# --- Core ---
+python-dotenv==1.0.1
+requests==2.32.3
+pydantic==2.9.2
+loguru==0.7.2
+
+# --- PDF Parsing & Processing ---
+PyPDF2==3.0.1
+pdfminer.six==20231228
+pandas==2.2.3
+numpy==2.1.2
+
+# --- Google Cloud Vertex AI ---
+google-cloud-aiplatform==1.68.0
+google-cloud-storage==2.18.2
+
+# --- Streamlit UI ---
+streamlit==1.39.0
+streamlit-extras==0.4.7
+
+# --- Async & Performance ---
+aiohttp==3.10.8
+tqdm==4.66.5
+
+# --- Testing ---
+pytest==8.3.3
+
+# --- Optional (if adding backend) ---
+fastapi==0.115.2
+uvicorn==0.32.0
+
