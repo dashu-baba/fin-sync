@@ -61,4 +61,41 @@ Each uploaded statement is parsed into a structured JSON:
   ]
 }
 
+## Architecture Overview
 
+                ┌──────────────┐
+                │ Bank Statement│
+                │ (PDF / CSV)  │
+                └──────┬───────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │ Vertex AI Parser │──► JSON Extraction
+              └──────────────────┘
+                       │
+                       ▼
+              ┌─────────────────────┐
+              │ Elastic Ingestion   │──► Numeric + Embedding Indexing
+              └─────────────────────┘
+                       │
+                       ▼
+             ┌───────────────────────┐
+             │ Streamlit App (UI)   │──► Hybrid Search + Chat
+             └───────────────────────┘
+
+
+## Setup
+
+# 1. Clone the repository
+git clone https://github.com/dashu-baba/fins-ync.git
+cd finsync
+
+# 2. Create environment
+python -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Run Streamlit app
+streamlit run app.py
