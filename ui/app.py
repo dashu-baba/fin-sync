@@ -14,6 +14,7 @@ from core.config import config
 from core.logger import get_logger
 from core.utils import human_size, safe_write
 from ingestion import read_pdf, parse_pdf_to_json
+from elastic import embed_texts, embedding_dim, ensure_index, to_doc, index_docs
 
 log = get_logger("ui")
 
@@ -135,6 +136,7 @@ if uploads_meta and any(m["ext"] == "pdf" for m in uploads_meta):
         else:
             with st.spinner("Calling Vertex AI..."):
                 log.info(f"Parsing with Vertex AI: project={config.gcp_project_id} location={config.gcp_location} model={config.vertex_model}")
+                parsed_results: List[Dict] = []
                 for m in uploads_meta:
                     if m["ext"] != "pdf":
                         continue
@@ -146,11 +148,42 @@ if uploads_meta and any(m["ext"] == "pdf" for m in uploads_meta):
                             gcp_location=config.gcp_location,
                             vertex_model=config.vertex_model,
                         )
+                        parsed_results.append({"meta": m, "parsed": parsed})
                         st.success(f"Parsed {m['name']} — {len(parsed.statements)} items")
-                        st.json(parsed.model_dump())
                     except Exception as e:
                         log.error(f"Vertex parse failed for {m['name']}: {e}")
                         st.error(f"Failed to parse {m['name']} with Vertex: {e}")
+                if parsed_results:
+                    st.session_state["parsed_results"] = parsed_results
+                    st.info("Ready to index into Elastic Cloud.")
+
+# ---- Index into Elastic Cloud ----
+parsed_results: List[Dict] = st.session_state.get("parsed_results", [])
+if parsed_results:
+    st.divider()
+    if st.button("Index to Elastic 🚀", key="elastic_index"):
+        if not config.ELASTIC_CLOUD_ENDPOINT or not config.elastic_api_key:
+            st.error("Elastic Cloud credentials not configured.")
+        else:
+            try:
+                dim = embedding_dim(project_id=config.gcp_project_id, location=config.gcp_location, model_name=config.vertex_model_embed)
+                ensure_index(config.elastic_index_name, vector_dim=dim)
+                docs: List[Dict] = []
+                for item in parsed_results:
+                    parsed = item["parsed"].model_dump()
+                    raw_text = "\n\n".join(read_pdf(item["meta"]["path"], password=st.session_state.get("password") or None).pages)
+                    text_for_embed = " ".join([
+                        parsed.get("accountName", ""),
+                        parsed.get("bankName", ""),
+                        " ".join(s.get("statementDescription", "") for s in parsed.get("statements", [])),
+                    ]).strip()
+                    vec = embed_texts([text_for_embed], project_id=config.gcp_project_id, location=config.gcp_location, model_name=config.vertex_model_embed)[0]
+                    docs.append(to_doc(parsed, raw_text=raw_text, vector=vec))
+                n = index_docs(config.elastic_index_name, docs)
+                st.success(f"Indexed {n} document(s) into Elastic Cloud")
+            except Exception as e:
+                log.error(f"Elastic indexing failed: {e}")
+                st.error(f"Indexing failed: {e}")
 
 # ---- Sidebar Pipeline View ----
 with st.sidebar:
@@ -158,8 +191,8 @@ with st.sidebar:
     st.markdown("""
 1. Upload files & password ✅  
 2. Parse statements (Vertex AI) ✅  
-3. Clean / normalize ⏳  
-4. Embed & index (Elastic Cloud) ⏳  
+3. Clean / normalize ✅  
+4. Embed & index (Elastic Cloud) ✅  
 5. Chat & analytics ⏳  
 """
     )

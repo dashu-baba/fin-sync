@@ -28,8 +28,8 @@ def verify_environment() -> None:
             d.mkdir(parents=True, exist_ok=True)
 
     # Check that Google credentials and Elastic Cloud ID exist
-    if not os.getenv("ELASTIC_CLOUD_ID"):
-        log.warning("⚠️  ELASTIC_CLOUD_ID not set — Elastic Cloud features may not work")
+    if not os.getenv("ELASTIC_CLOUD_ENDPOINT"):
+        log.warning("⚠️  ELASTIC_CLOUD_ENDPOINT not set — Elastic Cloud features may not work")
     if not os.getenv("GCP_PROJECT_ID"):
         log.warning("⚠️  GCP_PROJECT_ID not set — Vertex AI features may not work")
 
