@@ -50,6 +50,11 @@ class AppConfig(BaseSettings):
     elastic_index_statements: str = Field(default=os.getenv("ELASTIC_IDX_STATEMENTS", "finsync-statements"))
     elastic_index_aggregates_monthly: str = Field(default=os.getenv("ELASTIC_IDX_AGG_MONTHLY", "finsync-aggregates-monthly"))
     elastic_transform_id: str = Field(default=os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", "finsync_txn_monthly"))
+    elastic_alias_txn_view: str = Field(default=os.getenv("ELASTIC_ALIAS_TXN_VIEW", "finsync-txn-view"))
+
+    # Vector field in statements index
+    elastic_vector_field: str = Field(default=os.getenv("ELASTIC_VECTOR_FIELD", "statementEmbedding"))
+    elastic_vector_dim: int = Field(default=os.getenv("ELASTIC_VECTOR_DIM", 768))
 
 
     @field_validator("log_level", mode="before")
@@ -82,7 +87,9 @@ class AppConfig(BaseSettings):
             self.elastic_index_statements = os.getenv("ELASTIC_IDX_STATEMENTS", self.elastic_index_statements)
             self.elastic_index_aggregates_monthly = os.getenv("ELASTIC_IDX_AGG_MONTHLY", self.elastic_index_aggregates_monthly)
             self.elastic_transform_id = os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", self.elastic_transform_id)
-
+            self.elastic_vector_field = os.getenv("ELASTIC_VECTOR_FIELD", self.elastic_vector_field)
+            self.elastic_vector_dim = os.getenv("ELASTIC_VECTOR_DIM", self.elastic_vector_dim)
+            self.elastic_alias_txn_view = os.getenv("ELASTIC_ALIAS_TXN_VIEW", self.elastic_alias_txn_view)
         if self.uploads_dir is None:
             self.uploads_dir = self.data_dir / "uploads"
         if self.log_file is None:
