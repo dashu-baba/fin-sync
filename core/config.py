@@ -43,7 +43,7 @@ class AppConfig(BaseSettings):
 
     # Storage / Elastic
     gcs_bucket: str | None = Field(default=os.getenv("GCS_BUCKET"))
-    elastic_cloud_id: str | None = Field(default=os.getenv("ELASTIC_CLOUD_ID"))
+    ELASTIC_CLOUD_ENDPOINT: str | None = Field(default=os.getenv("ELASTIC_CLOUD_ENDPOINT"))
     elastic_api_key: str | None = Field(default=os.getenv("ELASTIC_API_KEY"))
     elastic_index_name: str = Field(default=os.getenv("ELASTIC_INDEX_NAME", "finsync-transactions"))
 
@@ -70,7 +70,7 @@ class AppConfig(BaseSettings):
             self.vertex_model_genai = os.getenv("VERTEX_MODEL_GENAI", self.vertex_model_genai)
             self.vertex_model_embed = os.getenv("VERTEX_MODEL_EMBED", self.vertex_model_embed)
             self.gcs_bucket = os.getenv("GCS_BUCKET", self.gcs_bucket)
-            self.elastic_cloud_id = os.getenv("ELASTIC_CLOUD_ID", self.elastic_cloud_id)
+            self.ELASTIC_CLOUD_ENDPOINT = os.getenv("ELASTIC_CLOUD_ENDPOINT", self.ELASTIC_CLOUD_ENDPOINT)
             self.elastic_api_key = os.getenv("ELASTIC_API_KEY", self.elastic_api_key)
             self.elastic_index_name = os.getenv("ELASTIC_INDEX_NAME", self.elastic_index_name)
 

@@ -70,7 +70,7 @@ def _invoke_llm(model: GenerativeModel, text: str, temperature: float = 0.1, ret
                 contents=f"{SYSTEM_INSTRUCTIONS}\n\n{PROMPT_TEMPLATE.format(statement_text=text)}",
                 generation_config={
                     "temperature": temperature,
-                    "max_output_tokens": 8192,
+                    "max_output_tokens": 16384,
                     "response_mime_type": "application/json",
                 },
                 safety_settings=None,
