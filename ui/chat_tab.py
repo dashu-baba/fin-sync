@@ -35,7 +35,7 @@ def render():
         with st.spinner("Retrieving…"):
             results = hybrid_search(user_query, filters, top_k=20)
         with st.spinner("Thinking…"):
-            answer = chat_vertex(user_query, results["statements"], results["transactions"])
+            answer = chat_vertex(user_query, results["transactions_vector"], results["transactions_keyword"])
 
         st.session_state.chat_history.append({"q": user_query, "a": answer, "results": results})
 
@@ -45,7 +45,7 @@ def render():
         st.markdown(turn["a"])
 
         with st.expander("Results (debug)"):
-            st.write({"statements": [h.get("_id") for h in turn["results"]["statements"]],
-                      "transactions": [h.get("_id") for h in turn["results"]["transactions"]]})
+            st.write({"transactions_vector": [h.get("_id") for h in turn["results"]["transactions_vector"]],
+                      "transactions_keyword": [h.get("_id") for h in turn["results"]["transactions_keyword"]]})
 
         st.divider()

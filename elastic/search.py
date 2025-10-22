@@ -11,7 +11,6 @@ log = log("elastic/search")
 def _vector_query(user_query: str, k: int = 12) -> Dict[str, Any]:
     log.info(f"Vector query: user_query={user_query} k={k}")
     embedding = embed_texts([user_query], project_id=cfg.gcp_project_id, location=cfg.gcp_location, model_name=cfg.vertex_model_embed)
-    log.debug(f"Embedding: {embedding}")
     # Use ES text expansion or dense_vector knn. Assuming dense_vector kNN here.
     return {
         "knn": {
@@ -24,7 +23,7 @@ def _vector_query(user_query: str, k: int = 12) -> Dict[str, Any]:
     }
 
 def _keyword_query(user_query: str, filters: Dict[str, Any], size: int = 20) -> Dict[str, Any]:
-    must = [{"multi_match": {"query": user_query, "fields": ["statementDescription^2", "statementNotes", "merchant", "narration"]}}]
+    must = [{"multi_match": {"query": user_query, "fields": ["bankName", "accountName", "description", "category", "currency"]}}]
     if date_from := filters.get("date_from"):
         must.append({"range": {"statementDate": {"gte": date_from}}})
     if date_to := filters.get("date_to"):
@@ -47,37 +46,44 @@ def _rrf(blended_lists: List[List[Dict[str, Any]]], k: int = 20, k_rrf: int = 60
     ranked = sorted(seen.values(), key=lambda h: scores[h["_id"]], reverse=True)
     return ranked[:k]
 
-def vector_search_statements(query: str, size: int = 12) -> List[Dict[str, Any]]:
+def vector_search_transactions(query: str, size: int = 12) -> List[Dict[str, Any]]:
     body = {
         "size": size,
         **_vector_query(query, k=size),
-        "_source": ["accountName","accountNo","bankName","statementFrom","statementTo","summary","id"]
+        "_source": ["id","accountNo","bankName","accountName","type","amount","balance","description","category","currency","sourceStatementId","sourceFile"]
     }
-    res = es().search(index=cfg.elastic_index_statements, body=body)
+    res = es().search(index=cfg.elastic_alias_txn_view, body=body)
     return res["hits"]["hits"]
 
 def keyword_search_transactions(query: str, filters: Dict[str, Any], size: int = 20) -> List[Dict[str, Any]]:
     body = _keyword_query(query, filters=filters, size=size)
-    body["_source"] = ["statementDate","statementAmount","statementType","statementDescription","statementBalance","accountNo","bankName","id"]
+    body["_source"] = ["id","accountNo","bankName","accountName","type","amount","balance","description","category","currency","sourceStatementId","sourceFile"]
+
+    log.info(f"Keyword search transactions body: {body}")
     res = es().search(index=cfg.elastic_alias_txn_view, body=body)
     return res["hits"]["hits"]
 
 def hybrid_search(query: str, filters: Dict[str, Any], top_k: int = 20) -> Dict[str, Any]:
     log.info(f"Hybrid search: query={query} filters={filters}")
+
+    # Vector on TRANSACTIONS (uses desc_vector)
     try:
-        vec_hits = vector_search_statements(query, size=12)
+        vec_hits = vector_search_transactions(query, size=min(12, top_k))
     except Exception as e:
-        log.error(f"Error vector searching statements: {e}")
+        log.error(f"Error vector searching transactions: {e}")
         vec_hits = []
+
+    # Keyword on TRANSACTIONS
     try:
-        kw_hits = keyword_search_transactions(query, filters=filters, size=24)
+        kw_hits = keyword_search_transactions(query, filters=filters, size=min(24, max(10, top_k*2)))
     except Exception as e:
         log.error(f"Error keyword searching transactions: {e}")
         kw_hits = []
-    kw_hits  = keyword_search_transactions(query, filters=filters, size=24)
+
     fused = _rrf([vec_hits, kw_hits], k=top_k)
     return {
-        "statements": vec_hits,
-        "transactions": kw_hits,
+        "transactions_vector": vec_hits,
+        "transactions_keyword": kw_hits,
         "fused": fused
     }
+

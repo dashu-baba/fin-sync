@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 from google.cloud import aiplatform
 from core.config import config as cfg
 from core.logger import get_logger as log
-from elastic import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+from elastic import SYSTEM_PROMPT
 
 log = log("llm/vertex_chat")
 
@@ -37,6 +37,7 @@ def format_docs(statements: List[Dict[str, Any]] | None,
             f"[{_hit_index(h)}#{_hit_id(h)}] "
             f"{src.get('accountNo','')} {src.get('bankName','')} "
             f"{src.get('statementFrom','')}→{src.get('statementTo','')} | {_short(src.get('summary',''))}"
+            f"| {src.get('description','')}"
         )
 
     t_parts: List[str] = []
@@ -47,6 +48,7 @@ def format_docs(statements: List[Dict[str, Any]] | None,
             f"{src.get('statementDate','')} {src.get('statementType','')} {src.get('statementAmount','')} "
             f"bal={src.get('statementBalance','')} • {_short(src.get('statementDescription',''))} "
             f"| acct={src.get('accountNo','')}"
+            f"| {src.get('description','')}"
         )
 
     doc = "Statements:\n" + ("\n".join(s_parts) if s_parts else "∅") + \
@@ -63,12 +65,13 @@ def build_user_prompt(question: str, statements, transactions) -> str:
     )
 
 def chat_vertex(question: str, statements, transactions) -> str:
-    log.info(f"Chatting with Vertex AI: question={question}")
+    log.info(f"Chatting with Vertex AI: question={question} statements={statements} transactions={transactions}")
     from vertexai.generative_models import GenerativeModel
     init_vertex()
     try:
         model = GenerativeModel(cfg.vertex_model_genai)
         user_prompt = build_user_prompt(question, statements, transactions)
+        log.info(f"User prompt: {user_prompt}")
         resp = model.generate_content([SYSTEM_PROMPT, user_prompt])
         return (resp.text or "").strip() or "(no response)"
     except Exception as e:

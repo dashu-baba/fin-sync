@@ -53,7 +53,7 @@ class AppConfig(BaseSettings):
     elastic_alias_txn_view: str = Field(default=os.getenv("ELASTIC_ALIAS_TXN_VIEW", "finsync-txn-view"))
 
     # Vector field in statements index
-    elastic_vector_field: str = Field(default=os.getenv("ELASTIC_VECTOR_FIELD", "statementEmbedding"))
+    elastic_vector_field: str = Field(default=os.getenv("ELASTIC_VECTOR_FIELD", "desc_vector"))
     elastic_vector_dim: int = Field(default=os.getenv("ELASTIC_VECTOR_DIM", 768))
 
 
