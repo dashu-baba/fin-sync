@@ -13,7 +13,7 @@ if str(ROOT_DIR) not in sys.path:
 from core.config import config
 from core.logger import get_logger
 from core.utils import human_size, safe_write
-from ingestion import read_pdf
+from ingestion import read_pdf, parse_pdf_to_json
 
 log = get_logger("ui")
 
@@ -121,17 +121,43 @@ if submitted:
                         for p in parsed_info:
                             enc = "Yes" if p["encrypted"] else "No"
                             st.write(f"• {p['name']} — pages: {p['num_pages']}, encrypted: {enc}, title: {p['title'] or 'N/A'}")
-
-                    st.info("Next step ➜ Parse with Vertex AI and index into Elastic Cloud.")
                 else:
                     st.error("No valid files were uploaded.")
+
+# ---- Vertex AI Parse (persistent via session_state) ----
+uploads_meta: List[Dict] = st.session_state.get("uploads_meta", [])
+if uploads_meta and any(m["ext"] == "pdf" for m in uploads_meta):
+    st.divider()
+    if st.button("Parse with Vertex AI ✨", key="vertex_parse"):
+        if not config.gcp_project_id:
+            log.error("GCP_PROJECT_ID is not configured.")
+            st.error("GCP_PROJECT_ID is not configured.")
+        else:
+            with st.spinner("Calling Vertex AI..."):
+                log.info(f"Parsing with Vertex AI: project={config.gcp_project_id} location={config.gcp_location} model={config.vertex_model}")
+                for m in uploads_meta:
+                    if m["ext"] != "pdf":
+                        continue
+                    try:
+                        parsed = parse_pdf_to_json(
+                            m["path"],
+                            password=st.session_state.get("password") or None,
+                            gcp_project=config.gcp_project_id,
+                            gcp_location=config.gcp_location,
+                            vertex_model=config.vertex_model,
+                        )
+                        st.success(f"Parsed {m['name']} — {len(parsed.statements)} items")
+                        st.json(parsed.model_dump())
+                    except Exception as e:
+                        log.error(f"Vertex parse failed for {m['name']}: {e}")
+                        st.error(f"Failed to parse {m['name']} with Vertex: {e}")
 
 # ---- Sidebar Pipeline View ----
 with st.sidebar:
     st.header("📊 FinSync Pipeline")
     st.markdown("""
 1. Upload files & password ✅  
-2. Parse statements (Vertex AI) ⏳  
+2. Parse statements (Vertex AI) ✅  
 3. Clean / normalize ⏳  
 4. Embed & index (Elastic Cloud) ⏳  
 5. Chat & analytics ⏳  
