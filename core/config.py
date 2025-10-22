@@ -43,9 +43,14 @@ class AppConfig(BaseSettings):
 
     # Storage / Elastic
     gcs_bucket: str | None = Field(default=os.getenv("GCS_BUCKET"))
-    ELASTIC_CLOUD_ENDPOINT: str | None = Field(default=os.getenv("ELASTIC_CLOUD_ENDPOINT"))
+    elastic_cloud_endpoint: str | None = Field(default=os.getenv("ELASTIC_CLOUD_ENDPOINT"))
     elastic_api_key: str | None = Field(default=os.getenv("ELASTIC_API_KEY"))
     elastic_index_name: str = Field(default=os.getenv("ELASTIC_INDEX_NAME", "finsync-transactions"))
+    elastic_index_transactions: str = Field(default=os.getenv("ELASTIC_IDX_TRANSACTIONS", "finsync-transactions"))
+    elastic_index_statements: str = Field(default=os.getenv("ELASTIC_IDX_STATEMENTS", "finsync-statements"))
+    elastic_index_aggregates_monthly: str = Field(default=os.getenv("ELASTIC_IDX_AGG_MONTHLY", "finsync-aggregates-monthly"))
+    elastic_transform_id: str = Field(default=os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", "finsync_txn_monthly"))
+
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -70,9 +75,13 @@ class AppConfig(BaseSettings):
             self.vertex_model_genai = os.getenv("VERTEX_MODEL_GENAI", self.vertex_model_genai)
             self.vertex_model_embed = os.getenv("VERTEX_MODEL_EMBED", self.vertex_model_embed)
             self.gcs_bucket = os.getenv("GCS_BUCKET", self.gcs_bucket)
-            self.ELASTIC_CLOUD_ENDPOINT = os.getenv("ELASTIC_CLOUD_ENDPOINT", self.ELASTIC_CLOUD_ENDPOINT)
+            self.elastic_cloud_endpoint = os.getenv("ELASTIC_CLOUD_ENDPOINT", self.elastic_cloud_endpoint)
             self.elastic_api_key = os.getenv("ELASTIC_API_KEY", self.elastic_api_key)
             self.elastic_index_name = os.getenv("ELASTIC_INDEX_NAME", self.elastic_index_name)
+            self.elastic_index_transactions = os.getenv("ELASTIC_IDX_TRANSACTIONS", self.elastic_index_transactions)
+            self.elastic_index_statements = os.getenv("ELASTIC_IDX_STATEMENTS", self.elastic_index_statements)
+            self.elastic_index_aggregates_monthly = os.getenv("ELASTIC_IDX_AGG_MONTHLY", self.elastic_index_aggregates_monthly)
+            self.elastic_transform_id = os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", self.elastic_transform_id)
 
         if self.uploads_dir is None:
             self.uploads_dir = self.data_dir / "uploads"

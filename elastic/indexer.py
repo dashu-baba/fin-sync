@@ -1,8 +1,10 @@
 from __future__ import annotations
 import os
 from typing import Dict, Any, List
-from elasticsearch import Elasticsearch, ApiError
+from elasticsearch import Elasticsearch, ApiError, NotFoundError
+from elasticsearch.helpers import bulk
 from core.logger import get_logger
+from .mappings import mapping_transactions, mapping_statements
 
 log = get_logger("indexer")
 
@@ -88,3 +90,78 @@ def index_docs(index_name: str, docs: List[Dict[str, Any]]) -> int:
     success, _ = bulk(es, actions)
     log.info(f"Indexed {success} document(s) into {index_name}")
     return success
+
+def ensure_statements_index(index_name: str, *, vector_dim: int):
+    es = es_client()
+    if es.indices.exists(index=index_name):
+        log.info(f"Statements index exists: {index_name}")
+        return
+    es.indices.create(index=index_name, body=mapping_statements(vector_dim))
+    log.info(f"Created statements index: {index_name} (dim={vector_dim})")
+
+def ensure_transactions_index(index_pattern: str, *, vector_dim: int | None = None):
+    """
+    Use a data stream for transactions: {index_pattern} e.g. 'finsync-transactions'
+    We create a composable template so writes to 'finsync-transactions' use a data stream.
+    """
+    es = es_client()
+    template_name = f"{index_pattern}-template"
+    body = {
+        "index_patterns": [f"{index_pattern}*"],
+        "data_stream": {},
+        "template": mapping_transactions(vector_dim)
+    }
+    es.indices.put_index_template(name=template_name, body=body)
+    # Create the data stream if absent
+    try:
+        es.indices.get_data_stream(name=index_pattern)
+        log.info(f"Transactions data stream ready: {index_pattern}")
+    except NotFoundError:
+        es.indices.create_data_stream(name=index_pattern)
+        log.info(f"Created data stream: {index_pattern}")
+
+def _strip_none(d: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in d.items() if v is not None}
+
+def bulk_index(index: str, docs: List[Dict[str, Any]], *, id_field: str | None = None) -> int:
+    if not docs:
+        return 0
+    es = es_client()
+    log.info(f"Bulk indexing to {index} {' with id_field=' + id_field if id_field else ''}, {len(docs)} docs")
+    # Detect if target is a data stream; data streams require op_type=create
+    op_type = "index"
+    try:
+        info = es.indices.get_data_stream(name=index)
+        if info and info.get("data_streams"):
+            op_type = "create"
+            log.info(f"Target '{index}' is a data stream; using op_type=create")
+    except NotFoundError:
+        pass
+    actions = []
+    for d in docs:
+        clean = _strip_none(d)
+        a = {"_op_type": op_type, "_index": index, "_source": clean}
+        if id_field and clean.get(id_field):
+            a["_id"] = clean[id_field]
+        actions.append(a)
+    try:
+        ok, details = bulk(es, actions, raise_on_error=False, stats_only=False)
+        # helpers.bulk may return a generator; when raise_on_error=False, it returns tuple
+        # details can be a list of item responses; collect failures
+        failed = []
+        if isinstance(details, list):
+            for item in details:
+                # item looks like {"index": {"status": ..., "error": {...}, "_id": "..."}}
+                meta = item.get("index") or item.get("create") or item.get("update") or {}
+                status = meta.get("status", 200)
+                if status >= 300:
+                    failed.append(meta)
+        if failed:
+            for f in failed[:10]:
+                log.error(f"Bulk index failure: status={f.get('status')} id={f.get('_id')} error={f.get('error')}")
+            log.error(f"Total failures: {len(failed)} for index {index}")
+        log.info(f"Indexed {ok} doc(s) into {index}")
+        return ok
+    except Exception as e:
+        log.error(f"Bulk indexing to {index} failed: {e}")
+        raise

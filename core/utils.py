@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import hashlib
 from typing import BinaryIO
+import hashlib
 
 def human_size(num_bytes: int) -> str:
     units = ["B","KB","MB","GB","TB"]
@@ -17,3 +18,7 @@ def safe_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as f:
         f.write(data)
+
+def make_id(*parts: str) -> str:
+    joined = "||".join(parts)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
