@@ -56,13 +56,19 @@ class ParsedStatement(BaseModel):
             return []
         return value
 
-    @field_validator("accountNo")
+    @field_validator("accountNo", mode="before")
     @classmethod
-    def _validate_account_no(cls, value: int) -> int:
-        digits = len(str(abs(value)))
-        if digits < 6 or digits > 20:
+    def _normalize_and_validate_account_no(cls, value) -> str:
+        if value is None:
+            raise ValueError("accountNo is required")
+        s = str(value).strip()
+        # Keep digits only (ignore spaces, hyphens)
+        digits_only = "".join(ch for ch in s if ch.isdigit())
+        if not digits_only:
+            raise ValueError("accountNo must contain digits")
+        if len(digits_only) < 6 or len(digits_only) > 20:
             raise ValueError("accountNo must be between 6 and 20 digits")
-        return value
+        return digits_only
 
     @model_validator(mode="after")
     def _validate_dates_and_items(self) -> "ParsedStatement":

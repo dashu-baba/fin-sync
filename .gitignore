@@ -14,3 +14,5 @@ __pycache__/*
 .env.test
 *.pyc
 *.log
+data/uploads/*
+data/output/*
