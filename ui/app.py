@@ -13,6 +13,7 @@ if str(ROOT_DIR) not in sys.path:
 from core.config import config
 from core.logger import get_logger
 from core.utils import human_size, safe_write
+from ingestion import read_pdf
 
 log = get_logger("ui")
 
@@ -64,6 +65,7 @@ if submitted:
                 log.warning(f"Upload rejected: size {total_size / 1e6:.2f} MB")
             else:
                 saved_files: List[Dict] = []
+                parsed_info: List[Dict] = []
                 for f in files:
                     name = Path(f.name).name
                     ext = Path(name).suffix.lower().lstrip(".")
@@ -90,6 +92,20 @@ if submitted:
                     saved_files.append(meta)
                     log.info(f"Saved upload: {meta}")
 
+                    if ext == "pdf":
+                        try:
+                            result = read_pdf(target_path, password=password or None)
+                            parsed_info.append({
+                                "name": name,
+                                "num_pages": result.num_pages,
+                                "encrypted": result.encrypted,
+                                "title": result.meta.title,
+                            })
+                            log.info(f"Parsed PDF: name={name} pages={result.num_pages} encrypted={result.encrypted}")
+                        except Exception as e:
+                            log.error(f"Failed to parse PDF {name}: {e}")
+                            st.warning(f"Could not parse {name}. It will be skipped for now.")
+
                 if saved_files:
                     st.session_state["uploads_meta"] = saved_files
                     st.session_state["password"] = password or ""
@@ -99,6 +115,12 @@ if submitted:
                         for m in saved_files:
                             lock_icon = "🔒" if st.session_state["password"] else ""
                             st.write(f"• **{m['name']}** — {m['size_human']} ({m['ext']}) {lock_icon}")
+
+                    if parsed_info:
+                        st.subheader("📄 PDF Parse Summary")
+                        for p in parsed_info:
+                            enc = "Yes" if p["encrypted"] else "No"
+                            st.write(f"• {p['name']} — pages: {p['num_pages']}, encrypted: {enc}, title: {p['title'] or 'N/A'}")
 
                     st.info("Next step ➜ Parse with Vertex AI and index into Elastic Cloud.")
                 else:
