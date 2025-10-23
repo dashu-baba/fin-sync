@@ -6,7 +6,7 @@ from core.logger import get_logger
 from elastic.search import hybrid_search
 from llm.vertex_chat import chat_vertex
 from ui.services import SessionManager
-from ui.components import render_filter_bar, render_chat_history
+from ui.components import render_chat_history
 
 log = get_logger("ui/pages/chat_page")
 
@@ -17,41 +17,37 @@ def render() -> None:
     SessionManager.init_session()
     
     # Page header
-    st.header("🔎 Search & Chat (Hybrid)")
+    st.header("💬 Chat with Your Finances")
     st.caption(
-        "Semantic (statements) + Keyword (transactions) → "
-        "grounded Gemini answers with citations"
+        "Ask questions about your financial transactions and get AI-powered insights"
     )
     
-    # Render filters
-    filters = render_filter_bar()
+    # Display chat history first
+    history = SessionManager.get_chat_history()
+    render_chat_history(history, max_turns=10)
     
-    # Query input
+    # Query input at the bottom
     user_query = st.text_input(
-        "Ask about your finances… e.g., \"Summarize June expenses by category\""
+        "Ask about your finances…",
+        placeholder="e.g., 'Summarize my expenses for last month' or 'Show me all transactions over $500'"
     )
     
     # Search and answer
-    if st.button("Search & Answer", type="primary") and user_query.strip():
-        _handle_search_and_answer(user_query, filters)
-    
-    # Display chat history
-    history = SessionManager.get_chat_history()
-    render_chat_history(history, max_turns=10)
+    if st.button("Send", type="primary") and user_query.strip():
+        _handle_search_and_answer(user_query)
 
 
-def _handle_search_and_answer(query: str, filters: dict) -> None:
+def _handle_search_and_answer(query: str) -> None:
     """
     Handle search and answer workflow.
     
     Args:
         query: User query string
-        filters: Filter dictionary from filter bar
     """
     try:
-        # Retrieve relevant documents
+        # Retrieve relevant documents (no filters)
         with st.spinner("Retrieving…"):
-            results = hybrid_search(query, filters, top_k=20)
+            results = hybrid_search(query, filters={}, top_k=20)
         
         # Generate answer
         with st.spinner("Thinking…"):

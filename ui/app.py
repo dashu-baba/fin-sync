@@ -19,7 +19,7 @@ log = get_logger("ui")
 setup_page()
 
 # Create tabs
-tab1, tab2, tab3 = st.tabs(["📥 Ingest", "💬 Search & Chat", "📊 Analytics"])
+tab1, tab2, tab3 = st.tabs(["📥 Ingest", "💬 Chat", "📊 Analytics"])
 
 with tab1:
     render_ingest_page()
