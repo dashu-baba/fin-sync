@@ -6,6 +6,7 @@ from core.logger import get_logger
 from elastic.search import hybrid_search
 from llm.vertex_chat import chat_vertex
 from llm.intent_router import classify_intent_safe, classify_intent_with_context
+from llm.intent_executor import execute_intent
 from ui.services import SessionManager
 from ui.services.clarification_manager import ClarificationManager
 from ui.components import (
@@ -217,6 +218,43 @@ def _proceed_with_search(query: str, intent_response) -> None:
         intent_response: Intent classification response
     """
     try:
+        # Check if we have intent classification and route accordingly
+        if intent_response and hasattr(intent_response, 'classification'):
+            intent_type = intent_response.classification.intent
+            
+            # Route based on intent type
+            if intent_type in ["aggregate", "trend", "listing"]:
+                # Use new intent execution flow for structured queries
+                log.info(f"Using intent executor for: {intent_type}")
+                
+                with st.spinner(f"🔍 Processing {intent_type} query..."):
+                    result = execute_intent(query, intent_response)
+                
+                # Display results
+                answer = result.get("answer", "No response generated")
+                data = result.get("data", {})
+                
+                # Save to chat history
+                log.info("Saving intent-based chat turn to session")
+                intent_data = intent_response.model_dump() if intent_response else None
+                SessionManager.add_chat_turn(
+                    query, 
+                    answer, 
+                    {"intent_result": data},
+                    intent=intent_data
+                )
+                
+                # Clear clarification state
+                SessionManager.clear_clarification_state()
+                
+                # Rerun to display the new turn
+                log.info("Chat turn complete, refreshing UI")
+                st.rerun()
+                return
+        
+        # Fallback to original hybrid search flow for text_qa and unclassified queries
+        log.info("Using fallback hybrid search flow")
+        
         # Step 1: Retrieve relevant documents
         with st.spinner("🔍 Retrieving relevant transactions..."):
             log.info("Starting hybrid search")
