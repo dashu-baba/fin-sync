@@ -11,7 +11,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from core.logger import get_logger
 from ui.config import setup_page
-from ui.pages import render_ingest_page, render_chat_page
+from ui.pages import render_ingest_page, render_chat_page, render_analytics_page
 
 log = get_logger("ui")
 
@@ -19,10 +19,13 @@ log = get_logger("ui")
 setup_page()
 
 # Create tabs
-tab1, tab2 = st.tabs(["📥 Ingest", "💬 Search & Chat"])
+tab1, tab2, tab3 = st.tabs(["📥 Ingest", "💬 Search & Chat", "📊 Analytics"])
 
 with tab1:
     render_ingest_page()
 
 with tab2:
     render_chat_page()
+
+with tab3:
+    render_analytics_page()
