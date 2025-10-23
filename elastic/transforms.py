@@ -7,6 +7,51 @@ from .indexer import es_client
 
 log = get_logger("transforms")
 
+def _transform_body_monthly_inflow_outflow(
+    source_index: str,
+    dest_index: str,
+    *,
+    calendar_interval: str = "1M",
+    frequency: str = "2m",
+) -> Dict[str, Any]:
+    """
+    Monthly inflow/outflow per account using a Transform.
+    Aggregations:
+      - inflow: sum(amount) filtered by type=credit
+      - outflow: sum(amount) filtered by type=debit
+      - txCount: count of transactions
+    """
+    return {
+        "source": {"index": source_index},
+        "dest": {"index": dest_index},
+        "pivot": {
+            "group_by": {
+                "accountNo": {"terms": {"field": "accountNo"}},
+                "month": {
+                    "date_histogram": {
+                        "field": "@timestamp",
+                        "calendar_interval": calendar_interval
+                    }
+                }
+            },
+            "aggregations": {
+                "inflow": {
+                    "filter": {"term": {"type": "credit"}},
+                    "aggs": {"amount": {"sum": {"field": "amount"}}}
+                },
+                "outflow": {
+                    "filter": {"term": {"type": "debit"}},
+                    "aggs": {"amount": {"sum": {"field": "amount"}}}
+                },
+                "txCount": {"value_count": {"field": "amount"}}
+            }
+        },
+        "frequency": frequency,
+        "sync": {"time": {"field": "@timestamp", "delay": "60s"}},
+        "settings": {"max_page_search_size": 500},
+        "description": "Monthly inflow/outflow per account (no category)."
+    }
+
 def _transform_body(
     source_index: str,
     dest_index: str,
@@ -58,6 +103,27 @@ def transform_exists(es: Elasticsearch, transform_id: str) -> bool:
         return True
     except NotFoundError:
         return False
+
+def ensure_transform_monthly_inflow_outflow(
+    transform_id: str,
+    source_index: str,
+    dest_index: str,
+    *,
+    calendar_interval: str = "1M",
+    frequency: str = "2m",
+) -> None:
+    """Ensure monthly inflow/outflow transform exists."""
+    es = es_client()
+    body = _transform_body_monthly_inflow_outflow(
+        source_index, dest_index,
+        calendar_interval=calendar_interval,
+        frequency=frequency
+    )
+    if transform_exists(es, transform_id):
+        log.info(f"Transform exists: {transform_id}")
+    else:
+        es.transform.put_transform(transform_id=transform_id, body=body)
+        log.info(f"Created transform: {transform_id}")
 
 def ensure_transform_monthly(
     transform_id: str,

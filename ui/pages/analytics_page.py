@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from core.logger import get_logger
 from ui.services import SessionManager
 from ui.components import render_analytics_view
+from elastic.analytics import get_available_accounts
 
 log = get_logger("ui/pages/analytics_page")
 
@@ -38,11 +39,19 @@ def render() -> None:
     with st.expander("🔧 Advanced Filters", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
+            # Fetch available accounts
+            try:
+                available_accounts = get_available_accounts()
+            except Exception as e:
+                log.error(f"Failed to fetch available accounts: {e}")
+                available_accounts = []
+            
             account_filter = st.multiselect(
                 "Filter by Account",
-                options=[],  # Will be populated with actual accounts
+                options=available_accounts,
                 default=[],
-                key="analytics_account_filter"
+                key="analytics_account_filter",
+                help="Leave empty to show all accounts"
             )
         with col2:
             transaction_type = st.multiselect(
