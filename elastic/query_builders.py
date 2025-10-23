@@ -351,3 +351,106 @@ def q_listing(plan: IntentClassification, limit: int = 50, sort_field: str = "@t
     log.debug(f"Built listing query: {query_body}")
     return query_body
 
+
+def q_text_qa(user_query: str, filters: IntentFilters | None = None, size: int = 10) -> Dict[str, Any]:
+    """
+    Build ES query for text_qa intent - semantic Q&A on statements.
+    
+    Uses hybrid search: BM25 (keyword) + kNN (vector) for RRF fusion.
+    This will be executed as two separate queries and results fused by RRF.
+    
+    Args:
+        user_query: User's question
+        filters: Optional filters (accountNo)
+        size: Number of results
+        
+    Returns:
+        Dict with 'keyword' and 'vector' queries to execute separately
+    """
+    log.info(f"Building text_qa queries for: {user_query}")
+    
+    filters = filters or IntentFilters()
+    
+    # Build filter clauses
+    filter_clauses: List[Dict[str, Any]] = []
+    
+    if filters.accountNo:
+        filter_clauses.append({"term": {"accountNo": filters.accountNo}})
+    
+    # Optional: date range on statements
+    if filters.dateFrom or filters.dateTo:
+        date_range: Dict[str, str] = {}
+        if filters.dateFrom:
+            date_range["gte"] = filters.dateFrom
+        if filters.dateTo:
+            date_range["lte"] = filters.dateTo
+        
+        # Use statementFrom/statementTo for filtering
+        filter_clauses.append({
+            "range": {"statementFrom": date_range}
+        })
+    
+    # Keyword query (BM25) on text fields
+    keyword_query = {
+        "size": size,
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "multi_match": {
+                            "query": user_query,
+                            "fields": [
+                                "summary_text^2",  # Boost summary
+                                "rawText",
+                                "accountName",
+                                "bankName"
+                            ],
+                            "type": "best_fields"
+                        }
+                    }
+                ],
+                "filter": filter_clauses if filter_clauses else []
+            }
+        },
+        "_source": [
+            "accountNo",
+            "accountName", 
+            "bankName",
+            "statementFrom",
+            "statementTo",
+            "summary_text",
+            "rawText",
+            "meta"
+        ]
+    }
+    
+    # Vector query (kNN) - will need embedding
+    # We'll handle embedding in the executor
+    vector_query_template = {
+        "size": size,
+        "query": {
+            "bool": {
+                "filter": filter_clauses if filter_clauses else []
+            }
+        },
+        "_source": [
+            "accountNo",
+            "accountName",
+            "bankName", 
+            "statementFrom",
+            "statementTo",
+            "summary_text",
+            "rawText",
+            "meta"
+        ]
+    }
+    
+    log.debug(f"Built text_qa queries: keyword={keyword_query}, vector_template={vector_query_template}")
+    
+    return {
+        "keyword_query": keyword_query,
+        "vector_query_template": vector_query_template,
+        "user_query": user_query,
+        "size": size
+    }
+

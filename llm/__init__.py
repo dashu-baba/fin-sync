@@ -1,3 +1,3 @@
-from .vertex_chat import chat_vertex, build_user_prompt, compose_aggregate_answer
+from .vertex_chat import chat_vertex, build_user_prompt, compose_aggregate_answer, compose_text_qa_answer
 from .intent_router import classify_intent, classify_intent_safe, classify_intent_with_context
 from .intent_executor import execute_intent

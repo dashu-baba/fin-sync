@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Dict, Any
 from core.logger import get_logger
 from models.intent import IntentResponse
-from elastic.executors import execute_aggregate, execute_trend, execute_listing
-from llm.vertex_chat import compose_aggregate_answer, chat_vertex
+from elastic.executors import execute_aggregate, execute_trend, execute_listing, execute_text_qa
+from llm.vertex_chat import compose_aggregate_answer, compose_text_qa_answer, chat_vertex
 
 log = get_logger("llm/intent_executor")
 
@@ -180,15 +180,29 @@ def _execute_text_qa(query: str, plan) -> Dict[str, Any]:
     """Execute text_qa intent (semantic Q&A on statements)."""
     log.info("Executing text_qa intent")
     
-    # TODO: Implement semantic search on finsync-statements index
-    # For now, fallback to simple response
-    log.warning("text_qa not fully implemented, using fallback")
+    # Step 1: Execute hybrid search on statements index
+    result = execute_text_qa(query, plan, size=10)
+    
+    if "error" in result:
+        return {
+            "intent": "text_qa",
+            "answer": f"Sorry, I couldn't search your statements: {result['error']}",
+            "data": result,
+            "citations": [],
+            "error": result["error"]
+        }
+    
+    # Step 2: Compose answer with citations
+    chunks = result.get("hits", [])
+    provenance = result.get("provenance", [])
+    
+    answer = compose_text_qa_answer(query, chunks, provenance)
     
     return {
         "intent": "text_qa",
-        "answer": "Text Q&A functionality is coming soon. This will search through your bank statement documents.",
-        "data": {},
-        "citations": []
+        "answer": answer,
+        "data": result,
+        "citations": provenance  # Return provenance as citations
     }
 
 

@@ -188,6 +188,93 @@ Keep it concise but informative. Highlight any notable patterns or insights."""
         return "Here's your financial summary:\n" + "\n".join(summary_parts) if summary_parts else "No data available for the specified criteria."
 
 
+def compose_text_qa_answer(query: str, chunks: List[Dict[str, Any]], provenance: List[Dict[str, Any]]) -> str:
+    """
+    Generate natural language answer from text QA search results with citations.
+    
+    Args:
+        query: Original user query
+        chunks: Retrieved statement chunks
+        provenance: Provenance information with citations
+        
+    Returns:
+        Natural language answer with citations
+    """
+    log.info("Composing text QA answer with citations")
+    from vertexai.generative_models import GenerativeModel
+    init_vertex()
+    
+    try:
+        if not chunks:
+            return "I couldn't find any relevant information in your bank statements to answer that question."
+        
+        # Build context from chunks
+        context_parts = []
+        for i, chunk in enumerate(chunks[:5], start=1):  # Limit to top 5 chunks
+            text = chunk.get("text", "")[:400]  # Truncate long chunks
+            source_info = f"{chunk.get('bankName', '')} - Account {chunk.get('accountNo', '')} ({chunk.get('statementFrom', '')} to {chunk.get('statementTo', '')})"
+            context_parts.append(f"[{i}] {source_info}\n{text}")
+        
+        context_text = "\n\n".join(context_parts)
+        
+        # Build citations list
+        citations_text = []
+        for i, prov in enumerate(provenance[:5], start=1):
+            citations_text.append(
+                f"[{i}] {prov.get('source', '')} (Page {prov.get('page', 1)}, Score: {prov.get('score', 0.0):.3f})"
+            )
+        
+        # Build prompt
+        system_prompt = """You are a financial assistant helping users understand their bank statement data.
+Provide clear, accurate answers based ONLY on the provided statement excerpts.
+Always cite your sources using the [N] format provided in the context.
+If the information is not in the provided statements, say so clearly."""
+        
+        user_prompt = f"""User question: {query}
+
+Relevant statement excerpts:
+{context_text}
+
+Please answer the user's question based on the above statements. 
+Include citations [1], [2], etc. in your answer to reference specific statements.
+Keep the answer clear and concise."""
+        
+        log.debug(f"Text QA prompt: {user_prompt[:500]}...")
+        
+        model = GenerativeModel(cfg.vertex_model_genai)
+        resp = model.generate_content([system_prompt, user_prompt])
+        answer = (resp.text or "").strip()
+        
+        if not answer:
+            answer = "I found relevant statements but couldn't generate a clear answer."
+        
+        # Append citations section
+        if citations_text:
+            answer += "\n\n**Sources:**\n" + "\n".join(citations_text)
+        
+        log.info("Text QA answer generated successfully with citations")
+        return answer
+        
+    except Exception as e:
+        log.exception(f"Error composing text QA answer: {e}")
+        
+        # Fallback: simple summary
+        if not chunks:
+            return "No relevant statements found."
+        
+        fallback = f"Found {len(chunks)} relevant statement(s):\n\n"
+        for i, chunk in enumerate(chunks[:3], start=1):
+            text = chunk.get("text", "")[:200]
+            fallback += f"{i}. {chunk.get('bankName', '')} ({chunk.get('statementFrom', '')}): {text}...\n\n"
+        
+        if provenance:
+            fallback += "\nSources:\n"
+            for i, prov in enumerate(provenance[:3], start=1):
+                fallback += f"[{i}] {prov.get('source', '')}\n"
+        
+        return fallback
+
+
 def chat_vertex(question: str, statements, transactions) -> str:
     log.info(f"Chatting with Vertex AI: question={question} statements={statements} transactions={transactions}")
     from vertexai.generative_models import GenerativeModel

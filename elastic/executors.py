@@ -5,7 +5,8 @@ from core.logger import get_logger
 from core.config import config
 from models.intent import IntentClassification, IntentResponse
 from elastic.client import es
-from elastic.query_builders import q_aggregate, q_trend, q_listing
+from elastic.query_builders import q_aggregate, q_trend, q_listing, q_text_qa
+from elastic.embedding import embed_texts
 
 log = get_logger("elastic/executors")
 
@@ -274,4 +275,186 @@ def execute_listing(plan: IntentClassification, limit: int = 50) -> Dict[str, An
             "error": str(e),
             "hits": []
         }
+
+
+def execute_text_qa(user_query: str, plan: IntentClassification, size: int = 10) -> Dict[str, Any]:
+    """
+    Execute text_qa query with hybrid search on statements index.
+    
+    Performs:
+    1. Keyword search (BM25) on statement text fields
+    2. Vector search (kNN) on statement embeddings
+    3. RRF fusion of results
+    4. Extract provenance (statementId, page, score)
+    
+    Args:
+        user_query: User's question
+        plan: IntentClassification with filters
+        size: Number of results to return
+        
+    Returns:
+        {
+            "intent": "text_qa",
+            "hits": [chunks...],
+            "provenance": [
+                {"statementId": str, "page": int, "score": float, "source": str}
+            ],
+            "filters_applied": {...}
+        }
+    """
+    log.info(f"Executing text_qa query: {user_query}")
+    
+    try:
+        # Build queries
+        queries = q_text_qa(user_query, filters=plan.filters, size=size)
+        
+        client = es()
+        index = config.elastic_index_statements
+        
+        # Execute keyword search (BM25)
+        log.info("Executing keyword search on statements")
+        keyword_response = client.search(
+            index=index,
+            body=queries["keyword_query"]
+        )
+        keyword_hits = keyword_response.get("hits", {}).get("hits", [])
+        log.info(f"Keyword search returned {len(keyword_hits)} hits")
+        
+        # Execute vector search (kNN)
+        log.info("Generating embedding for vector search")
+        try:
+            embeddings = embed_texts(
+                [user_query],
+                project_id=config.gcp_project_id,
+                location=config.gcp_location,
+                model_name=config.vertex_model_embed
+            )
+            query_embedding = embeddings[0]
+            
+            # Build kNN query
+            vector_query = {
+                "size": size,
+                "knn": {
+                    "field": "summary_vector",  # or content_vector depending on index
+                    "query_vector": query_embedding,
+                    "k": size,
+                    "num_candidates": size * 4
+                },
+                "_source": queries["vector_query_template"]["_source"]
+            }
+            
+            # Add filters if present
+            if queries["vector_query_template"]["query"]["bool"].get("filter"):
+                vector_query["filter"] = queries["vector_query_template"]["query"]["bool"]["filter"]
+            
+            log.info("Executing vector search on statements")
+            vector_response = client.search(
+                index=index,
+                body=vector_query
+            )
+            vector_hits = vector_response.get("hits", {}).get("hits", [])
+            log.info(f"Vector search returned {len(vector_hits)} hits")
+            
+        except Exception as e:
+            log.warning(f"Vector search failed: {e}, using keyword results only")
+            vector_hits = []
+        
+        # RRF Fusion
+        log.info("Fusing results with RRF")
+        fused_hits = _rrf_fusion([keyword_hits, vector_hits], k=size)
+        
+        # Extract chunks and provenance
+        chunks = []
+        provenance = []
+        
+        for hit in fused_hits:
+            source = hit.get("_source", {})
+            doc_id = hit.get("_id", "")
+            score = hit.get("_score", 0.0)
+            
+            # Extract chunk text
+            chunk_text = source.get("summary_text", "") or source.get("rawText", "")
+            if chunk_text:
+                chunk_text = chunk_text[:500]  # Limit chunk size
+            
+            chunks.append({
+                "id": doc_id,
+                "text": chunk_text,
+                "accountNo": source.get("accountNo", ""),
+                "bankName": source.get("bankName", ""),
+                "statementFrom": source.get("statementFrom", ""),
+                "statementTo": source.get("statementTo", ""),
+                "score": score
+            })
+            
+            # Extract provenance
+            provenance.append({
+                "statementId": doc_id,
+                "page": source.get("meta", {}).get("page", 1) if isinstance(source.get("meta"), dict) else 1,
+                "score": score,
+                "source": f"{source.get('bankName', '')} - {source.get('accountNo', '')} ({source.get('statementFrom', '')} to {source.get('statementTo', '')})"
+            })
+        
+        result = {
+            "intent": "text_qa",
+            "hits": chunks,
+            "provenance": provenance,
+            "filters_applied": {
+                "accountNo": plan.filters.accountNo,
+                "dateFrom": plan.filters.dateFrom,
+                "dateTo": plan.filters.dateTo
+            },
+            "total_hits": len(fused_hits)
+        }
+        
+        log.info(f"Text QA execution complete: {len(chunks)} chunks with provenance")
+        return result
+        
+    except Exception as e:
+        log.exception(f"Error executing text_qa query: {e}")
+        return {
+            "intent": "text_qa",
+            "error": str(e),
+            "hits": [],
+            "provenance": []
+        }
+
+
+def _rrf_fusion(hit_lists: List[List[Dict[str, Any]]], k: int = 10, k_rrf: int = 60) -> List[Dict[str, Any]]:
+    """
+    Reciprocal Rank Fusion (RRF) to combine multiple ranked lists.
+    
+    Args:
+        hit_lists: List of hit lists from different searches
+        k: Number of results to return
+        k_rrf: RRF parameter (default 60)
+        
+    Returns:
+        Fused and re-ranked list of hits
+    """
+    scores: Dict[str, float] = {}
+    docs: Dict[str, Dict[str, Any]] = {}
+    
+    for hit_list in hit_lists:
+        for rank, hit in enumerate(hit_list, start=1):
+            doc_id = hit.get("_id", "")
+            if not doc_id:
+                continue
+            
+            # RRF score: 1 / (k + rank)
+            rrf_score = 1.0 / (k_rrf + rank)
+            scores[doc_id] = scores.get(doc_id, 0.0) + rrf_score
+            
+            # Keep the hit document
+            if doc_id not in docs:
+                docs[doc_id] = hit
+    
+    # Sort by RRF score
+    sorted_docs = sorted(docs.values(), key=lambda h: scores.get(h.get("_id", ""), 0.0), reverse=True)
+    
+    # Update scores with RRF scores
+    for doc in sorted_docs:
+        doc["_score"] = scores.get(doc.get("_id", ""), 0.0)
+    
+    return sorted_docs[:k]
 
