@@ -2,12 +2,14 @@ from __future__ import annotations
 from typing import List, Optional
 from functools import lru_cache
 from core.logger import get_logger
+from core.config import config
 from google.cloud import aiplatform
 from vertexai.language_models import TextEmbeddingModel
 
 log = get_logger("embedding")
 
-EMBED_MODEL_NAME = "gemini-embedding-001"  # configurable via env if you prefer
+# Use the configured embedding model from config
+EMBED_MODEL_NAME = config.vertex_model_embed
 
 @lru_cache(maxsize=1)
 def _load_model(project_id: str, location: str, model_name: str = EMBED_MODEL_NAME) -> TextEmbeddingModel:
