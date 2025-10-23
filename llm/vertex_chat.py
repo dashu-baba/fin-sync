@@ -38,6 +38,15 @@ def format_docs(statements: List[Dict[str, Any]] | None,
             f"{src.get('accountNo','')} {src.get('bankName','')} "
             f"{src.get('statementFrom','')}→{src.get('statementTo','')} | {_short(src.get('summary',''))}"
             f"| {src.get('description','')}"
+            f"| {src.get('category','')}"
+            f"| {src.get('currency','')}"
+            f"| {src.get('sourceStatementId','')}"
+            f"| {src.get('sourceFile','')}"
+            f"| {src.get('timestamp','')}"
+            f"| {src.get('@timestamp','')}"
+            f"| {src.get('amount','')}"
+            f"| {src.get('balance','')}"
+            f"| {src.get('type','')}"
         )
 
     t_parts: List[str] = []
@@ -49,6 +58,16 @@ def format_docs(statements: List[Dict[str, Any]] | None,
             f"bal={src.get('statementBalance','')} • {_short(src.get('statementDescription',''))} "
             f"| acct={src.get('accountNo','')}"
             f"| {src.get('description','')}"
+            f"| {src.get('category','')}"
+            f"| {src.get('currency','')}"
+            f"| {src.get('sourceStatementId','')}"
+            f"| {src.get('sourceFile','')}"
+            f"| {src.get('timestamp','')}"
+            f"| {src.get('@timestamp','')}"
+            f"| {src.get('amount','')}"
+            f"| {src.get('balance','')}"
+            f"| {src.get('type','')}"
+            f"| {src.get('id','')}"
         )
 
     doc = "Statements:\n" + ("\n".join(s_parts) if s_parts else "∅") + \
