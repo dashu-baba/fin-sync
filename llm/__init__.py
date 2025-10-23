@@ -1,1 +1,2 @@
 from .vertex_chat import chat_vertex, build_user_prompt
+from .intent_router import classify_intent, classify_intent_safe, classify_intent_with_context

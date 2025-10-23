@@ -2,6 +2,7 @@
 from .session_manager import SessionManager
 from .upload_service import UploadService
 from .parse_service import ParseService
+from .clarification_manager import ClarificationManager
 
-__all__ = ["SessionManager", "UploadService", "ParseService"]
+__all__ = ["SessionManager", "UploadService", "ParseService", "ClarificationManager"]
 
