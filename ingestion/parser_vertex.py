@@ -30,6 +30,7 @@ SYSTEM_INSTRUCTIONS = (
     "You are a finance statement extraction engine. "
     "Extract fields in strict JSON per the provided schema. "
     "Dates must be ISO (YYYY-MM-DD). Amounts are numbers. "
+    "Extract page number"
     "Only return JSON, no explanations."
 )
 
@@ -43,16 +44,23 @@ Parse the following bank statement text into this JSON schema:
   "statementFrom": "YYYY-MM-DD",
   "statementTo": "YYYY-MM-DD",
   "bankName": string,
-  "statements": [
+  "pages": [
     {{
-      "statementDate": "YYYY-MM-DD",
-      "statementAmount": number,
-      "statementType": "credit" | "debit",
-      "statementDescription": string,
-      "statementBalance": number,
-      "statementNotes": string | null
+        "pageNumber": number,
+        "statements": [
+            {{
+            "statementDate": "YYYY-MM-DD",
+            "statementAmount": number,
+            "statementType": "credit" | "debit",
+            "statementDescription": string,
+            "statementBalance": number,
+            "statementNotes": string | null
+            "statementPage": number | null
+            }}
+        ]
     }}
   ]
+  
 }}
 
 Constraints:
@@ -60,6 +68,9 @@ Constraints:
 - Infer accountType if present; otherwise null.
 - Do NOT hallucinate: if unknown, use null or empty string.
 - Output ONLY valid JSON.
+- Each page should be a separate object in the "pages" array.
+- Each page should have a "pageNumber" property.
+- If a descriptiption move to separate page, consider it part of the previous page.
 
 TEXT (may include multiple pages):
 ---
@@ -344,8 +355,8 @@ def _validate_and_fix_json(payload: str) -> ParsedStatement:
     try:
         parsed = ParsedStatement.model_validate(data)
         
-        # Log summary of parsed data
-        statement_count = len(parsed.statements)
+        # Log summary of parsed data - count statements from all pages
+        statement_count = sum(len(page.statements) for page in parsed.pages)
         log.info(
             f"Statement validated successfully: account={parsed.accountName} "
             f"account_no={parsed.accountNo} bank={parsed.bankName} "
@@ -441,11 +452,12 @@ def parse_pdf_to_json(
         
         # Success logging
         elapsed = time.time() - start_time
+        transaction_count = sum(len(page.statements) for page in parsed.pages)
         log.info(
             f"PDF statement parsing complete: path={pdf_path_obj.name} "
             f"account={parsed.accountName} bank={parsed.bankName} "
             f"period={parsed.statementFrom} to {parsed.statementTo} "
-            f"transactions={len(parsed.statements)} elapsed={elapsed:.2f}s"
+            f"transactions={transaction_count} elapsed={elapsed:.2f}s"
         )
         
         return parsed

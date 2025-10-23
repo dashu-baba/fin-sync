@@ -11,6 +11,7 @@ from ingestion import parse_pdf_to_json
 from ingestion.parser_vertex import parse_csv_to_json
 from elastic import embed_texts, start_transform, wait_for_first_checkpoint, ensure_transform_monthly
 from elastic.indexer import ensure_statements_index, ensure_transactions_index, bulk_index
+from models.schema import ParsedStatement
 
 log = get_logger("ui/services/parse_service")
 
@@ -42,7 +43,7 @@ class ParseService:
         password: Optional[str] = None,
         gcp_project: Optional[str] = None,
         gcp_location: Optional[str] = None
-    ) -> Optional[Any]:
+    ) -> ParsedStatement:
         """
         Parse a single file (PDF or CSV) using Vertex AI.
         
@@ -53,66 +54,79 @@ class ParseService:
         gcp_location = gcp_location or config.gcp_location or os.getenv("GCP_LOCATION", "us-central1")
         
         try:
-            if file_ext == "pdf":
-                return parse_pdf_to_json(
+            # TODO: Add CSV support
+            return parse_pdf_to_json(
                     file_path,
                     password,
                     gcp_project=gcp_project,
                     gcp_location=gcp_location,
                     vertex_model=config.vertex_model
                 )
-            else:
-                return parse_csv_to_json(file_path)
         except Exception as e:
             log.error(f"Failed to parse {Path(file_path).name}: {e!r}")
             raise
     
     @staticmethod
-    def create_statement_doc(
-        parsed,
+    def create_statement_docs(
+        parsed: ParsedStatement,
         source_file: str,
-        summary_vector: List[float]
-    ) -> Dict:
+        gcp_project: Optional[str] = None,
+        gcp_location: Optional[str] = None
+    ) -> List[Dict]:
         """
-        Create a statement document for indexing.
+        Create statements documents for indexing.
         
         Args:
             parsed: Parsed statement object
             source_file: Source filename
-            summary_vector: Embedding vector for the summary
+            gcp_project: GCP project ID
+            gcp_location: GCP location
             
         Returns:
-            Statement document dict
+            List of statement document dicts
         """
-        statement_id = make_id(
-            str(parsed.accountNo),
-            str(parsed.statementFrom),
-            str(parsed.statementTo)
-        )
+        stmt_docs = []
+        for i, page in enumerate(parsed.pages):
+            statement_id = make_id(
+                str(parsed.accountNo),
+                str(parsed.statementFrom),
+                str(parsed.statementTo),
+                str(page.pageNumber),
+            )
         
-        head_txn = "\n".join(
-            f"{it.statementDate} {it.statementType} {it.statementAmount} {it.statementDescription}"
-            for it in parsed.statements[:200]
-        )
+            head_txn = "\n".join(
+                f"{statement.statementDate} {statement.statementType} {statement.statementAmount} {statement.statementDescription}"
+                for statement in page.statements[:200]
+            )
         
-        summary_text = (
-            f"Account: {parsed.accountName}\n"
-            f"Bank: {parsed.bankName}\n"
-            f"Range: {parsed.statementFrom}..{parsed.statementTo}\n"
-            f"Transactions:\n{head_txn}"
-        )
+            summary_text = (
+                f"Account: {parsed.accountName}\n"
+                f"Bank: {parsed.bankName}\n"
+                f"Range: {parsed.statementFrom}..{parsed.statementTo}\n"
+                f"Page: {page.pageNumber}\n"
+                f"Transactions:\n{head_txn}"
+            )
+
+            summary_vector = embed_texts(
+                [summary_text],
+                project_id=gcp_project,
+                location=gcp_location,
+                model_name=config.vertex_model_embed
+            )[0]
         
-        return {
-            "id": statement_id,
-            "accountNo": str(parsed.accountNo),
-            "bankName": parsed.bankName,
-            "accountName": parsed.accountName,
-            "statementFrom": str(parsed.statementFrom),
-            "statementTo": str(parsed.statementTo),
-            "summary_text": summary_text,
-            "summary_vector": summary_vector,
-            "meta": {"sourceFile": source_file},
-        }
+            stmt_docs.append({
+                "id": statement_id,
+                "accountNo": str(parsed.accountNo),
+                "bankName": parsed.bankName,
+                "pageNumber": page.pageNumber,
+                "accountName": parsed.accountName,
+                "statementFrom": str(parsed.statementFrom),
+                "statementTo": str(parsed.statementTo),
+                "summary_text": summary_text,
+                "summary_vector": summary_vector,
+                "meta": {"sourceFile": source_file},
+            })
+        return stmt_docs
     
     @staticmethod
     def create_transaction_docs(
@@ -141,24 +155,38 @@ class ParseService:
         gcp_location = gcp_location or config.gcp_location or os.getenv("GCP_LOCATION", "us-central1")
         
         tx_docs = []
-        for i, txn in enumerate(parsed.statements):
+        # Flatten all transactions from all pages, preserving page information
+        all_statements = []
+        for page in parsed.pages:
+            for stmt in page.statements:
+                all_statements.append((page.pageNumber, stmt))
+        
+        for i, (page_num, txn) in enumerate(all_statements):
             txn_id = make_id(
                 str(parsed.accountNo),
                 str(txn.statementDate),
-                str(i),
+                str(txn.statementPage or page_num),
                 str(txn.statementAmount),
-                txn.statementDescription or ""
+                txn.statementDescription or "",
+                str(statement_id)
             )
             
-            vec = None
-            if embed_descriptions:
-                vec = embed_texts(
-                    [txn.statementDescription or ""],
-                    project_id=gcp_project,
-                    location=gcp_location,
-                    model_name=config.vertex_model_embed
-                )[0]
-            
+            # TODO: Embed descriptions if needed
+            # vec = None
+            # if embed_descriptions:
+            #     vec = embed_texts(
+            #         [txn.statementDescription or ""],
+            #         project_id=gcp_project,
+            #         location=gcp_location,
+            #         model_name=config.vertex_model_embed
+            #     )[0]
+            vec = embed_texts(
+                [txn.statementDescription or ""],
+                project_id=gcp_project,
+                location=gcp_location,
+                model_name=config.vertex_model_embed
+            )[0]
+
             tx_doc = {
                 "id": txn_id,
                 "accountNo": str(parsed.accountNo),
@@ -173,6 +201,7 @@ class ParseService:
                 "sourceFile": source_file,
                 "timestamp": str(txn.statementDate),
                 "@timestamp": str(txn.statementDate),
+                "pageNumber": txn.statementPage or page_num,
             }
             
             # Add balance if present

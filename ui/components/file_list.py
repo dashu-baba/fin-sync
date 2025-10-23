@@ -40,4 +40,8 @@ def render_file_list(
                 f"encrypted: {enc}, "
                 f"title: {info['title'] or 'N/A'}"
             )
+            
+            # Show debug JSON information
+            with st.expander(f"🐛 Debug JSON for {info['name']}", expanded=False):
+                st.json(info)
 

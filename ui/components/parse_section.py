@@ -7,7 +7,7 @@ import streamlit as st
 from core.config import config
 from core.logger import get_logger
 from elastic import embed_texts
-from elastic.indexer import ensure_statements_index, ensure_transactions_index
+from elastic.indexer import ensure_statements_index, ensure_transactions_index, ensure_transaction_alias
 from ui.services import ParseService
 
 log = get_logger("ui/components/parse_section")
@@ -77,50 +77,36 @@ def _handle_parse_and_index(
                 
                 # Generate summary embedding
                 status.update(label="Generating embeddings...", state="running")
-                head_txn = "\n".join(
-                    f"{it.statementDate} {it.statementType} {it.statementAmount} {it.statementDescription}"
-                    for it in parsed.statements[:200]
-                )
-                summary_text = (
-                    f"Account: {parsed.accountName}\n"
-                    f"Bank: {parsed.bankName}\n"
-                    f"Range: {parsed.statementFrom}..{parsed.statementTo}\n"
-                    f"Transactions:\n{head_txn}"
-                )
-                stmt_vec = embed_texts(
-                    [summary_text],
-                    project_id=gcp_project,
-                    location=gcp_location,
-                    model_name=config.vertex_model_embed
-                )[0]
+                
                 
                 # Ensure indices
                 status.update(label="Ensuring indices...", state="running")
-                ensure_statements_index(idx_statements, vector_dim=len(stmt_vec))
+                ensure_statements_index(idx_statements, vector_dim=config.elastic_vector_dim)
                 ensure_transactions_index(
-                    idx_transactions,
-                    vector_dim=(len(stmt_vec) if embed_txn_desc else None)
+                    idx_transactions
                 )
+                ensure_transaction_alias(config.elastic_alias_txn_view, idx_transactions)
                 
                 # Create documents
                 source_file = os.path.basename(meta["name"])
-                stmt_doc = ParseService.create_statement_doc(
+                stmt_docs = ParseService.create_statement_docs(
                     parsed,
                     source_file,
-                    stmt_vec
-                )
-                stmt_docs.append(stmt_doc)
-                
-                tx_docs_batch = ParseService.create_transaction_docs(
-                    parsed,
-                    stmt_doc["id"],
-                    source_file,
-                    embed_descriptions=embed_txn_desc,
                     gcp_project=gcp_project,
                     gcp_location=gcp_location
                 )
-                txn_docs.extend(tx_docs_batch)
-                status.write(f"Prepared {len(tx_docs_batch)} transactions for {meta['name']}")
+
+                for stmt_doc in stmt_docs:
+                    tx_docs_batch = ParseService.create_transaction_docs(
+                        parsed,
+                        stmt_doc["id"],
+                        source_file,
+                        embed_descriptions=embed_txn_desc,
+                        gcp_project=gcp_project,
+                        gcp_location=gcp_location
+                    )
+                    txn_docs.extend(tx_docs_batch)
+                    status.write(f"Prepared {len(tx_docs_batch)} transactions for {meta['name']}")
                 
             except Exception as e:
                 log.error(f"Failed on {meta['name']}: {e!r}")
@@ -140,7 +126,7 @@ def _handle_parse_and_index(
             # Setup aggregation transform
             _setup_transform(status)
         else:
-            status.update(label="No documents to index.", state="warning")
+            status.update(label="No documents to index.", state="complete")
             st.warning("No documents to index.")
 
 

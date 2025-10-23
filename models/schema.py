@@ -10,6 +10,7 @@ class StatementItem(BaseModel):
     statementDescription: str = Field(default="")
     statementBalance: float
     statementNotes: str | None = None
+    statementPage: int | None = None
 
     model_config = {
         "extra": "forbid",
@@ -28,6 +29,23 @@ class StatementItem(BaseModel):
         s = str(value).strip()
         return s or None
 
+
+class Page(BaseModel):
+    pageNumber: int
+    statements: list[StatementItem]
+
+
+    @field_validator("statements", mode="before")
+    @classmethod
+    def _ensure_list(cls, value):
+        if value is None:
+            return []
+        return value
+
+    model_config = {
+        "extra": "forbid",
+    }
+
 class ParsedStatement(BaseModel):
     accountName: str
     accountNo: str
@@ -35,7 +53,7 @@ class ParsedStatement(BaseModel):
     statementFrom: date
     statementTo: date
     bankName: str
-    statements: list[StatementItem]
+    pages: list[Page]
 
     model_config = {
         "extra": "forbid",
@@ -48,13 +66,6 @@ class ParsedStatement(BaseModel):
             return None
         s = str(value).strip()
         return s or None
-
-    @field_validator("statements", mode="before")
-    @classmethod
-    def _ensure_list(cls, value):
-        if value is None:
-            return []
-        return value
 
     @field_validator("accountNo", mode="before")
     @classmethod
@@ -74,8 +85,9 @@ class ParsedStatement(BaseModel):
     def _validate_dates_and_items(self) -> "ParsedStatement":
         if self.statementFrom > self.statementTo:
             raise ValueError("statementFrom must be on or before statementTo")
-        for item in self.statements:
-            if item.statementDate < self.statementFrom or item.statementDate > self.statementTo:
-                raise ValueError("statementDate must be within the provided statementFrom and statementTo range")
+        for page in self.pages:
+            for item in page.statements:
+                if item.statementDate < self.statementFrom or item.statementDate > self.statementTo:
+                    raise ValueError("statementDate must be within the provided statementFrom and statementTo range")
         return self
 

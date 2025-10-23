@@ -91,7 +91,7 @@ def index_docs(index_name: str, docs: List[Dict[str, Any]]) -> int:
     log.info(f"Indexed {success} document(s) into {index_name}")
     return success
 
-def ensure_statements_index(index_name: str, *, vector_dim: int):
+def ensure_statements_index(index_name: str, *, vector_dim: int | None = None):
     es = es_client()
     if es.indices.exists(index=index_name):
         log.info(f"Statements index exists: {index_name}")
@@ -119,6 +119,20 @@ def ensure_transactions_index(index_pattern: str, *, vector_dim: int | None = No
     except NotFoundError:
         es.indices.create_data_stream(name=index_pattern)
         log.info(f"Created data stream: {index_pattern}")
+
+def ensure_transaction_alias(alias_name: str, index_pattern: str):
+    """
+    Ensure a transaction alias exists.
+    Args:
+        alias_name: The name of the alias
+        index_pattern: The index pattern to alias
+    """
+    es = es_client()
+    if es.indices.exists_alias(name=alias_name):
+        log.info(f"Transaction alias exists: {alias_name}")
+        return
+    es.indices.put_alias(name=alias_name, index=index_pattern)
+    log.info(f"Created transaction alias: {alias_name} for {index_pattern}")
 
 def _strip_none(d: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
