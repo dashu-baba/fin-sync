@@ -234,6 +234,23 @@ python -c "from google.cloud import aiplatform; print('Vertex AI SDK loaded')"
 python -c "from elastic.client import get_client; print('Elastic client OK')"
 ```
 
+#### **Sample Data for Testing**
+
+A sample bank statement is included for testing:
+
+**File**: `samples/020XXXXXX0811_13267330_JUL25.pdf`  
+**Password**: `0200097350811`
+
+Once your application is running:
+1. Navigate to the "Upload Statements" page
+2. Upload the sample file with the password above
+3. Try queries like:
+   - "What was my total spending in July 2025?"
+   - "How much did I spend on food and groceries?"
+   - "Show me my largest expense"
+
+You can also use your own bank statements - the system supports password-protected PDFs from any bank.
+
 ---
 
 ## ⚙️ Configuration
