@@ -435,6 +435,7 @@ The project showcases:
 
 - **GitHub**: https://github.com/dashu-baba/fin-sync
 - **Live Demo**: https://fin-sync-899361706979.us-central1.run.app
+- **Youtube demo**: https://youtu.be/yPJ0LnAYAl0
 - **Documentation**: See `docs/` directory for complete technical documentation
 - **License**: MIT (see LICENSE file)
 
