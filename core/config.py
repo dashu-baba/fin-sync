@@ -10,6 +10,14 @@ from dotenv import load_dotenv
 # Base .env load first
 load_dotenv()
 
+# Load secrets from Secret Manager in production
+if os.getenv("ENVIRONMENT") == "production" and os.getenv("USE_SECRET_MANAGER", "false").lower() == "true":
+    try:
+        from core.secrets import load_secrets_into_env
+        load_secrets_into_env()
+    except ImportError:
+        pass  # secrets.py not yet loaded during initial import
+
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",

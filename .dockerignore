@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Data directories (use GCS in production)
+data/uploads/*
+data/output/*.log
+!data/uploads/.gitkeep
+!data/output/.gitkeep
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!Readme.md
+docs/
+
+# Scripts (testing only)
+scripts/
+
+# Misc
+.DS_Store
+*.bak
+*.tmp
+
