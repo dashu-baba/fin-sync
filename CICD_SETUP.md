@@ -15,14 +15,14 @@
 Or via CLI:
 ```bash
 gcloud builds connections create github fin-sync-github \
-    --project=compliance-ai-navigator-474121 \
+    --project=$PROJECT_ID \
     --region=us-central1
 ```
 
 2. **Create Trigger**
 
 **Via Console:**
-- Go to: https://console.cloud.google.com/cloud-build/triggers?project=compliance-ai-navigator-474121
+- Go to: https://console.cloud.google.com/cloud-build/triggers?project=$PROJECT_ID
 - Click "Create Trigger"
 - Name: `fin-sync-auto-deploy`
 - Event: Push to branch
@@ -39,9 +39,9 @@ gcloud builds connections create github fin-sync-github \
 ```bash
 gcloud builds triggers create github \
     --name=fin-sync-auto-deploy \
-    --project=compliance-ai-navigator-474121 \
+    --project=$PROJECT_ID \
     --region=us-central1 \
-    --repository=projects/compliance-ai-navigator-474121/locations/us-central1/connections/fin-sync-github/repositories/YOUR_REPO \
+    --repository=projects/$PROJECT_ID/locations/us-central1/connections/fin-sync-github/repositories/YOUR_REPO \
     --branch-pattern="^main$" \
     --build-config=cloudbuild.yaml \
     --substitutions=_SERVICE_NAME=fin-sync,_REGION=us-central1,_ARTIFACT_REPO=fin-sync-repo
@@ -64,36 +64,42 @@ Monitor build: https://console.cloud.google.com/cloud-build/builds
 
 1. **Create Service Account**
 ```bash
+# Set your project ID
+PROJECT_ID="your-gcp-project-id"
+
 # Create service account for GitHub Actions
 gcloud iam service-accounts create github-actions-deploy \
     --display-name="GitHub Actions Deployment" \
-    --project=compliance-ai-navigator-474121
+    --project=$PROJECT_ID
 
 # Grant permissions
-gcloud projects add-iam-policy-binding compliance-ai-navigator-474121 \
-    --member="serviceAccount:github-actions-deploy@compliance-ai-navigator-474121.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/run.admin"
 
-gcloud projects add-iam-policy-binding compliance-ai-navigator-474121 \
-    --member="serviceAccount:github-actions-deploy@compliance-ai-navigator-474121.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/cloudbuild.builds.editor"
 
-gcloud projects add-iam-policy-binding compliance-ai-navigator-474121 \
-    --member="serviceAccount:github-actions-deploy@compliance-ai-navigator-474121.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/iam.serviceAccountUser"
 ```
 
 2. **Setup Workload Identity Federation**
 ```bash
+# Get project number
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+
 # Create workload identity pool
 gcloud iam workload-identity-pools create "github-actions-pool" \
-    --project="compliance-ai-navigator-474121" \
+    --project="$PROJECT_ID" \
     --location="global" \
     --display-name="GitHub Actions Pool"
 
 # Create provider
 gcloud iam workload-identity-pools providers create-oidc "github-provider" \
-    --project="compliance-ai-navigator-474121" \
+    --project="$PROJECT_ID" \
     --location="global" \
     --workload-identity-pool="github-actions-pool" \
     --display-name="GitHub Provider" \
@@ -102,14 +108,14 @@ gcloud iam workload-identity-pools providers create-oidc "github-provider" \
 
 # Bind service account
 gcloud iam service-accounts add-iam-policy-binding \
-    github-actions-deploy@compliance-ai-navigator-474121.iam.gserviceaccount.com \
-    --project="compliance-ai-navigator-474121" \
+    github-actions-deploy@${PROJECT_ID}.iam.gserviceaccount.com \
+    --project="$PROJECT_ID" \
     --role="roles/iam.workloadIdentityUser" \
-    --member="principalSet://iam.googleapis.com/projects/899361706979/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/YOUR_GITHUB_USERNAME/fin-sync"
+    --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/YOUR_GITHUB_USERNAME/fin-sync"
 
 # Get the Workload Identity Provider name
 gcloud iam workload-identity-pools providers describe "github-provider" \
-    --project="compliance-ai-navigator-474121" \
+    --project="$PROJECT_ID" \
     --location="global" \
     --workload-identity-pool="github-actions-pool" \
     --format="value(name)"
@@ -121,7 +127,7 @@ Go to: `https://github.com/YOUR_USERNAME/fin-sync/settings/secrets/actions`
 
 Add these secrets:
 - `WIF_PROVIDER`: (output from previous command)
-- `WIF_SERVICE_ACCOUNT`: `github-actions-deploy@compliance-ai-navigator-474121.iam.gserviceaccount.com`
+- `WIF_SERVICE_ACCOUNT`: `github-actions-deploy@YOUR-PROJECT-ID.iam.gserviceaccount.com`
 
 4. **The workflow is already created at `.github/workflows/deploy.yml`**
 
@@ -146,7 +152,7 @@ echo "🚀 Auto-deploying to Cloud Run..."
 COMMIT_SHA=$(git rev-parse --short HEAD)
 gcloud builds submit \
     --config=cloudbuild.yaml \
-    --project=compliance-ai-navigator-474121 \
+    --project=$PROJECT_ID \
     --substitutions=_SERVICE_NAME=fin-sync,_REGION=us-central1,_ARTIFACT_REPO=fin-sync-repo,COMMIT_SHA=$COMMIT_SHA \
     --async
 echo "✅ Build started! Check: https://console.cloud.google.com/cloud-build/builds"
@@ -196,7 +202,7 @@ git commit -m "test: auto-deploy"
 git push origin main
 
 # Watch the build (if using Cloud Build Trigger)
-gcloud builds list --limit=1 --project=compliance-ai-navigator-474121
+gcloud builds list --limit=1 --project=$PROJECT_ID
 
 # Or view in console
 # https://console.cloud.google.com/cloud-build/builds

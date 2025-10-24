@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: compliance-ai-navigator-474121
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}  # Set this in GitHub Secrets
   REGION: us-central1
   SERVICE_NAME: fin-sync
   ARTIFACT_REPO: fin-sync-repo

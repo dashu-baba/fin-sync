@@ -6,7 +6,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-PROJECT_ID=${GCP_PROJECT_ID:-"compliance-ai-navigator-474121"}
+PROJECT_ID=${GCP_PROJECT_ID:-"your-gcp-project-id"}
 REGION="us-central1"
 REPO_NAME="fin-sync"
 TRIGGER_NAME="fin-sync-auto-deploy"
