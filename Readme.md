@@ -176,6 +176,13 @@ See [`QUICKSTART_DEPLOY.md`](QUICKSTART_DEPLOY.md) for detailed deployment guide
 
 ### **Option 2: Local Development**
 
+#### **Prerequisites**
+- Python 3.11+
+- Google Cloud SDK (for authentication)
+- Git
+
+#### **Step-by-Step Setup**
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/dashu-baba/fin-sync.git
@@ -183,24 +190,68 @@ cd fin-sync
 
 # 2. Create virtual environment
 python3.11 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure environment
-cp .env.example .env
-# Edit .env with your credentials:
-#   - GCP_PROJECT_ID
-#   - ELASTIC_CLOUD_ENDPOINT
-#   - ELASTIC_API_KEY
+# 4. Set up Google Cloud authentication
+gcloud auth application-default login
+# This creates credentials for Vertex AI access
 
-# 5. Run application
+# 5. Configure environment variables
+cp .env.example .env
+
+# Edit .env with your actual values:
+# REQUIRED:
+#   GCP_PROJECT_ID=your-gcp-project-id
+#   ELASTIC_CLOUD_ENDPOINT=https://your-deployment.es.cloud.es.io:443
+#   ELASTIC_API_KEY=your-elastic-api-key
+#
+# OPTIONAL (has defaults):
+#   ENVIRONMENT=development
+#   LOG_LEVEL=INFO
+#   APP_PORT=8501
+#   VERTEX_MODEL=gemini-2.0-flash-exp
+#   VERTEX_MODEL_EMBED=text-embedding-004
+
+# 6. Run the application
 python main.py
-# Or directly: streamlit run ui/app.py
 ```
 
-Access at: `http://localhost:8501`
+**Alternative run methods:**
+```bash
+# Direct Streamlit run
+streamlit run ui/app.py --server.port 8501
+
+# With custom port
+python main.py  # Uses PORT from .env or default 8501
+```
+
+**Access the app at**: `http://localhost:8501`
+
+#### **What Happens on First Run**
+
+1. **Directory Creation**: `data/uploads/` and `data/output/` folders are auto-created
+2. **Elastic Indices**: Automatically created on first document upload
+3. **Logs**: Written to `data/output/app.log` and console
+4. **Storage**: Files stored locally in `data/uploads/` (development mode)
+
+#### **Testing Local Setup**
+
+```bash
+# Verify Python version
+python --version  # Should be 3.11+
+
+# Check installed packages
+pip list | grep -E "streamlit|google-cloud|elastic"
+
+# Test Vertex AI connection
+python -c "from google.cloud import aiplatform; print('Vertex AI SDK loaded')"
+
+# Test Elastic connection (after setting .env)
+python -c "from elastic.client import get_client; print('Elastic client OK')"
+```
 
 ---
 
@@ -208,32 +259,49 @@ Access at: `http://localhost:8501`
 
 ### **Environment Variables**
 
+Copy `.env.example` and configure with your values:
+
 ```bash
-# GCP Configuration
-GCP_PROJECT_ID=your-project-id
-GCP_LOCATION=us-central1
-GCS_BUCKET=your-bucket-name  # Optional, for production
+# Environment Configuration
+ENVIRONMENT=development                # development | production | staging | test
+LOG_LEVEL=INFO                        # DEBUG | INFO | WARNING | ERROR
+APP_PORT=8501                         # Port for Streamlit app
+
+# GCP Configuration (REQUIRED)
+GCP_PROJECT_ID=your-gcp-project-id    # Your Google Cloud project ID
+GCP_LOCATION=us-central1              # GCP region for Vertex AI
+GCS_BUCKET=your-project-finsync-uploads  # GCS bucket (optional, for production)
 
 # Vertex AI Models
-VERTEX_MODEL=gemini-2.0-flash-exp
-VERTEX_MODEL_GENAI=gemini-2.0-flash-exp
-VERTEX_MODEL_EMBED=text-embedding-004
+VERTEX_MODEL=gemini-2.0-flash-exp           # Model for parsing & chat
+VERTEX_MODEL_GENAI=gemini-2.0-flash-exp     # Generative AI model
+VERTEX_MODEL_EMBED=text-embedding-004       # Embedding model (768-dim)
 
-# Elastic Cloud
+# Elastic Cloud Configuration (REQUIRED)
 ELASTIC_CLOUD_ENDPOINT=https://your-deployment.es.cloud.es.io:443
-ELASTIC_API_KEY=your-api-key
-ELASTIC_IDX_TRANSACTIONS=finsync-transactions
-ELASTIC_IDX_STATEMENTS=finsync-statements
-ELASTIC_IDX_AGG_MONTHLY=finsync-aggregates-monthly
+ELASTIC_API_KEY=your-elastic-api-key
+ELASTIC_INDEX_NAME=finsync-transactions          # Legacy index name
+ELASTIC_IDX_TRANSACTIONS=finsync-transactions    # Transaction data stream
+ELASTIC_IDX_STATEMENTS=finsync-statements        # Statement vector index
+ELASTIC_IDX_AGG_MONTHLY=finsync-aggregates-monthly  # Monthly rollup index
+ELASTIC_TXN_MONTHLY_TRANSFORM_ID=finsync_txn_monthly  # Transform ID
+ELASTIC_ALIAS_TXN_VIEW=finsync-transactions-view     # Transaction alias
 
-# Application
-ENVIRONMENT=development  # production | staging | test
-LOG_LEVEL=INFO
-APP_PORT=8501
+# Elastic Vector Configuration
+ELASTIC_VECTOR_FIELD=desc_vector      # Field name for embeddings
+ELASTIC_VECTOR_DIM=768                # Embedding dimensions
 
-# Production Only
-USE_SECRET_MANAGER=false  # Set to true in Cloud Run
+# Production Only (Cloud Run)
+USE_SECRET_MANAGER=false              # Set to true in Cloud Run
 ```
+
+**Required for Local Development:**
+- `GCP_PROJECT_ID` - Your GCP project with Vertex AI enabled
+- `ELASTIC_CLOUD_ENDPOINT` - Your Elastic Cloud deployment URL
+- `ELASTIC_API_KEY` - Elastic Cloud API key
+
+**Optional (has sensible defaults):**
+- All other variables have default values and can be omitted
 
 ### **Storage Modes**
 
@@ -250,53 +318,139 @@ Implemented in `core/storage.py` with automatic fallback.
 
 ```
 fin-sync/
-├── core/                    # Core utilities
-│   ├── config.py           # Configuration management
-│   ├── logger.py           # Structured logging
-│   ├── storage.py          # GCS/Local storage abstraction
-│   ├── secrets.py          # Secret Manager integration
-│   └── utils.py            # Common utilities
-├── elastic/                 # Elastic Cloud integration
-│   ├── client.py           # ES client setup
-│   ├── indexer.py          # Document indexing
-│   ├── search.py           # Hybrid search
-│   ├── query_builders.py   # ES|QL query construction
-│   ├── executors.py        # Intent execution logic
-│   ├── analytics.py        # Analytics queries
-│   └── embedding.py        # Vector embedding generation
-├── ingestion/               # Document processing
-│   ├── pdf_reader.py       # PDF extraction (PyPDF2)
-│   └── parser_vertex.py    # Vertex AI parsing
-├── llm/                     # LLM integration
-│   ├── intent_router.py    # Intent classification
-│   ├── intent_executor.py  # Intent-based query execution
-│   └── vertex_chat.py      # Gemini chat interface
-├── models/                  # Data models
-│   ├── schema.py           # Pydantic schemas
-│   ├── intent.py           # Intent definitions
-│   └── es_docs.py          # Elastic document models
-├── ui/                      # Streamlit UI
-│   ├── app.py              # Main app entry
-│   ├── pages/              # Multi-page app
-│   │   ├── Ingest.py       # Upload & parse page
-│   │   └── Chat.py         # Conversational interface
-│   ├── components/         # Reusable UI components
-│   │   ├── upload_form.py
-│   │   ├── chat_history.py
-│   │   ├── analytics_view.py
-│   │   └── intent_display.py
-│   └── services/           # Business logic
-│       ├── upload_service.py
-│       ├── parse_service.py
-│       └── clarification_manager.py
-├── scripts/                 # Utility scripts
-├── docs/                    # Implementation docs
-├── Dockerfile              # Container definition
-├── cloudbuild.yaml         # CI/CD pipeline
-├── deploy.sh               # Deployment script
-├── requirements.txt        # Python dependencies
-└── main.py                 # Application entry point
+├── core/                          # Core utilities & configuration
+│   ├── __init__.py
+│   ├── config.py                 # Environment & settings management
+│   ├── logger.py                 # Structured logging (loguru)
+│   ├── storage.py                # GCS/Local storage abstraction
+│   ├── secrets.py                # GCP Secret Manager integration
+│   └── utils.py                  # Common helper functions
+│
+├── elastic/                       # Elastic Cloud integration
+│   ├── __init__.py
+│   ├── analytics.py              # ES|QL analytics queries
+│   ├── client.py                 # Elasticsearch client setup
+│   ├── embedding.py              # Vertex AI embedding generation
+│   ├── executors.py              # Intent query executors
+│   ├── indexer.py                # Document indexing & ingestion
+│   ├── mappings.py               # Index mappings & schemas
+│   ├── prompts.py                # LLM prompts for search
+│   ├── query_builders.py         # ES|QL query construction
+│   ├── search.py                 # Hybrid search implementation
+│   └── transforms.py             # Data transforms for rollups
+│
+├── ingestion/                     # PDF processing & parsing
+│   ├── __init__.py
+│   ├── pdf_reader.py             # PDF extraction (PyPDF2)
+│   └── parser_vertex.py          # Vertex AI statement parser
+│
+├── llm/                           # Large Language Model integration
+│   ├── __init__.py
+│   ├── intent_executor.py        # Execute classified intents
+│   ├── intent_router.py          # Intent classification system
+│   └── vertex_chat.py            # Gemini chat interface
+│
+├── models/                        # Data models & schemas
+│   ├── __init__.py
+│   ├── es_docs.py                # Elasticsearch document models
+│   ├── intent.py                 # Intent type definitions
+│   └── schema.py                 # Pydantic schemas
+│
+├── ui/                            # Streamlit user interface
+│   ├── app.py                    # Main Streamlit app entry
+│   │
+│   ├── components/               # Reusable UI components
+│   │   ├── analytics_view.py    # Analytics dashboard
+│   │   ├── chat_history.py      # Chat conversation display
+│   │   ├── clarification_dialog.py  # Clarification UI
+│   │   ├── file_list.py         # Uploaded files list
+│   │   ├── filter_bar.py        # Analytics filters
+│   │   ├── intent_display.py    # Intent classification display
+│   │   ├── intent_results.py    # Query results display
+│   │   ├── parse_section.py     # Parse status section
+│   │   ├── sidebar.py           # Sidebar navigation
+│   │   └── upload_form.py       # File upload form
+│   │
+│   ├── config/                   # UI configuration
+│   │   └── page_config.py       # Streamlit page config
+│   │
+│   ├── pages/                    # Multi-page app pages
+│   │   ├── Chat.py              # Chat interface page
+│   │   └── Ingest.py            # Upload & parse page
+│   │
+│   ├── services/                 # Business logic services
+│   │   ├── clarification_manager.py  # Clarification flow
+│   │   ├── parse_service.py     # PDF parsing service
+│   │   ├── session_manager.py   # Session state management
+│   │   └── upload_service.py    # File upload handling
+│   │
+│   └── views/                    # Page view logic
+│       ├── analytics_page.py    # Analytics page logic
+│       ├── chat_page.py         # Chat page logic
+│       └── ingest_page.py       # Ingest page logic
+│
+├── scripts/                       # Utility & testing scripts
+│   ├── check_embedding_dim.py
+│   ├── fix_indices.py
+│   ├── test_aggregate_intent.py
+│   ├── test_intent_router.py
+│   ├── verify_aggregate_filtered_by_text_structure.py
+│   ├── verify_aggregate_structure.py
+│   ├── verify_provenance_structure.py
+│   └── verify_text_qa_structure.py
+│
+├── data/                          # Local data (not in git)
+│   ├── uploads/                  # Uploaded PDFs (session-based)
+│   └── output/                   # Logs & outputs
+│       └── app.log              # Application logs
+│
+├── docs/                          # Implementation documentation
+│   ├── AGGREGATE_FILTERED_BY_TEXT_IMPLEMENTATION.md
+│   ├── AGGREGATE_INTENT_IMPLEMENTATION.md
+│   ├── CLARIFICATION_FLOW.md
+│   ├── CLARIFICATION_IMPLEMENTATION_SUMMARY.md
+│   ├── COMPLETE_INTENT_SYSTEM.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   ├── INTENT_CLASSIFICATION.md
+│   ├── PROVENANCE_INTENT_IMPLEMENTATION.md
+│   └── TEXT_QA_INTENT_IMPLEMENTATION.md
+│
+├── .github/                       # GitHub workflows
+│   └── workflows/
+│       └── deploy.yml            # GitHub Actions CI/CD
+│
+├── main.py                        # Application entry point
+├── requirements.txt               # Python dependencies
+├── .env.example                   # Environment variables template
+├── .gitignore                     # Git ignore rules
+│
+├── Dockerfile                     # Docker container definition
+├── .dockerignore                  # Docker ignore rules
+├── cloudbuild.yaml                # Cloud Build CI/CD config
+│
+├── deploy.sh                      # GCP deployment script
+├── setup-cicd.sh                  # CI/CD setup script
+│
+├── DEPLOYMENT.md                  # Complete deployment guide
+├── DEPLOYMENT_SUMMARY.md          # Deployment overview
+├── QUICKSTART_DEPLOY.md           # Quick deployment reference
+├── CICD_SETUP.md                  # CI/CD automation guide
+├── TODO_DEPLOYMENT.md             # GCS integration checklist
+├── SECURITY_AUDIT.md              # Security audit report
+├── INTEGRATION_CHECKLIST.md       # Integration checklist
+│
+└── Readme.md                      # This file
 ```
+
+**Key Directories:**
+- **`core/`** - Configuration, logging, storage, secrets
+- **`elastic/`** - All Elasticsearch/Elastic Cloud functionality
+- **`ingestion/`** - PDF parsing with Vertex AI
+- **`llm/`** - Intent routing & Gemini integration
+- **`models/`** - Pydantic schemas & data models
+- **`ui/`** - Complete Streamlit application
+- **`scripts/`** - Testing & verification utilities
+- **`docs/`** - Detailed implementation docs
 
 ---
 
