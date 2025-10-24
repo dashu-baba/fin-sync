@@ -150,6 +150,27 @@ Users receive clear, actionable error messages when duplicates are detected:
 - File comparison only scans the upload directory (typically small)
 - Elasticsearch query is optimized with exact term matches
 - Early exit on first duplicate detection
+- Works with both local filesystem and GCS storage backends
+
+### Storage Backend Support
+
+The duplicate detection system works seamlessly with **both local and GCS storage**:
+
+- **Local Development**: Checks files in `data/uploads/` directory
+- **Production (GCS)**: Checks files in GCS bucket via storage backend API
+- **Auto-Detection**: Automatically uses the correct method based on environment
+
+```python
+# Automatic storage backend detection
+use_storage_backend = config.environment == "production" and config.gcs_bucket is not None
+
+# Works for both local and GCS
+is_duplicate, filename = UploadService.check_duplicate_by_hash(
+    file_content, upload_dir, use_storage_backend
+)
+```
+
+See [`docs/STORAGE_BACKEND_IMPLEMENTATION.md`](STORAGE_BACKEND_IMPLEMENTATION.md) for details.
 
 ### Error Handling
 - If Elasticsearch check fails, the upload proceeds (fail-open approach)

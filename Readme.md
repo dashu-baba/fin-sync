@@ -306,12 +306,24 @@ USE_SECRET_MANAGER=false              # Set to true in Cloud Run
 
 ### **Storage Modes**
 
-The app automatically switches storage based on environment:
+The app **automatically switches storage** based on environment with zero code changes:
 
 - **Development**: Local filesystem (`data/uploads/`)
+  - Fast, free, easy debugging
+  - No network latency
+  
 - **Production**: Google Cloud Storage (configured via `GCS_BUCKET`)
+  - Scalable, durable (99.999999999%)
+  - Global access, automatic backup
 
-Implemented in `core/storage.py` with automatic fallback.
+**Features that work with both**:
+- File uploads and downloads
+- Duplicate detection (filename, hash, metadata)
+- File listing and deletion
+
+Implemented in `core/storage.py` with automatic backend selection and graceful fallback.
+
+See [`docs/STORAGE_BACKEND_IMPLEMENTATION.md`](docs/STORAGE_BACKEND_IMPLEMENTATION.md) for details.
 
 ---
 
@@ -416,6 +428,7 @@ fin-sync/
 │   ├── IMPLEMENTATION_SUMMARY.md
 │   ├── INTENT_CLASSIFICATION.md
 │   ├── PROVENANCE_INTENT_IMPLEMENTATION.md
+│   ├── STORAGE_BACKEND_IMPLEMENTATION.md
 │   └── TEXT_QA_INTENT_IMPLEMENTATION.md
 │
 ├── .github/                       # GitHub workflows
@@ -441,6 +454,7 @@ fin-sync/
 ├── TODO_DEPLOYMENT.md             # GCS integration checklist
 ├── SECURITY_AUDIT.md              # Security audit report
 ├── INTEGRATION_CHECKLIST.md       # Integration checklist
+├── STORAGE_BACKEND_SUMMARY.md     # Local/GCS storage switching summary
 │
 └── Readme.md                      # This file
 ```
@@ -590,14 +604,18 @@ python scripts/verify_aggregate_structure.py
 
 ## 📚 Documentation
 
+### Deployment
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) - Complete deployment guide
 - [`QUICKSTART_DEPLOY.md`](QUICKSTART_DEPLOY.md) - Quick deployment reference
 - [`CICD_SETUP.md`](CICD_SETUP.md) - CI/CD automation setup
 - [`TODO_DEPLOYMENT.md`](TODO_DEPLOYMENT.md) - GCS integration checklist
+
+### Features
 - [`docs/COMPLETE_INTENT_SYSTEM.md`](docs/COMPLETE_INTENT_SYSTEM.md) - Intent system architecture
 - [`docs/AGGREGATE_INTENT_IMPLEMENTATION.md`](docs/AGGREGATE_INTENT_IMPLEMENTATION.md) - Aggregation queries
 - [`docs/TEXT_QA_INTENT_IMPLEMENTATION.md`](docs/TEXT_QA_INTENT_IMPLEMENTATION.md) - QA system
 - [`docs/DUPLICATE_PROTECTION.md`](docs/DUPLICATE_PROTECTION.md) - Duplicate upload protection
+- [`docs/STORAGE_BACKEND_IMPLEMENTATION.md`](docs/STORAGE_BACKEND_IMPLEMENTATION.md) - Local/GCS storage switching
 
 ---
 
