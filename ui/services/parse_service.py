@@ -11,7 +11,7 @@ from core.utils import make_id
 from core.storage import get_storage_backend
 from ingestion import parse_pdf_to_json
 from ingestion.parser_vertex import parse_csv_to_json
-from elastic import embed_texts, start_transform, wait_for_first_checkpoint, ensure_transform_monthly
+from elastic import embed_texts
 from elastic.indexer import ensure_statements_index, ensure_transactions_index, bulk_index
 from models.schema import ParsedStatement
 
@@ -304,34 +304,4 @@ class ParseService:
         if txn_docs:
             bulk_index(idx_transactions, txn_docs, id_field="id")
             log.info(f"Indexed {len(txn_docs)} transaction(s)")
-    
-    @staticmethod
-    def setup_aggregation_transform(wait_for_checkpoint: bool = False) -> None:
-        """
-        Setup and start the monthly aggregation transform.
-        
-        Args:
-            wait_for_checkpoint: Whether to wait for initial backfill
-        """
-        src = config.elastic_index_transactions
-        dest = config.elastic_index_aggregates_monthly
-        transform_id = config.elastic_transform_id
-        
-        try:
-            ensure_transform_monthly(
-                transform_id,
-                source_index=f"{src}*",
-                dest_index=dest,
-                calendar_interval="1M",
-                frequency="1h"
-            )
-            start_transform(transform_id)
-            log.info(f"Started transform: {transform_id}")
-            
-            if wait_for_checkpoint:
-                wait_for_first_checkpoint(transform_id, timeout_sec=180)
-                log.info("Transform initial checkpoint complete")
-        except Exception as e:
-            log.error(f"Transform setup failed: {e!r}")
-            raise
 

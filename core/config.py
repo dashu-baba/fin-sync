@@ -56,8 +56,6 @@ class AppConfig(BaseSettings):
     elastic_index_name: str = Field(default=os.getenv("ELASTIC_INDEX_NAME", "finsync-transactions"))
     elastic_index_transactions: str = Field(default=os.getenv("ELASTIC_IDX_TRANSACTIONS", "finsync-transactions"))
     elastic_index_statements: str = Field(default=os.getenv("ELASTIC_IDX_STATEMENTS", "finsync-statements"))
-    elastic_index_aggregates_monthly: str = Field(default=os.getenv("ELASTIC_IDX_AGG_MONTHLY", "finsync-aggregates-monthly"))
-    elastic_transform_id: str = Field(default=os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", "finsync_txn_monthly"))
     elastic_alias_txn_view: str = Field(default=os.getenv("ELASTIC_ALIAS_TXN_VIEW", "finsync-txn-view"))
 
     # Vector field in statements index
@@ -93,8 +91,6 @@ class AppConfig(BaseSettings):
             self.elastic_index_name = os.getenv("ELASTIC_INDEX_NAME", self.elastic_index_name)
             self.elastic_index_transactions = os.getenv("ELASTIC_IDX_TRANSACTIONS", self.elastic_index_transactions)
             self.elastic_index_statements = os.getenv("ELASTIC_IDX_STATEMENTS", self.elastic_index_statements)
-            self.elastic_index_aggregates_monthly = os.getenv("ELASTIC_IDX_AGG_MONTHLY", self.elastic_index_aggregates_monthly)
-            self.elastic_transform_id = os.getenv("ELASTIC_TXN_MONTHLY_TRANSFORM_ID", self.elastic_transform_id)
             self.elastic_vector_field = os.getenv("ELASTIC_VECTOR_FIELD", self.elastic_vector_field)
             self.elastic_vector_dim = os.getenv("ELASTIC_VECTOR_DIM", self.elastic_vector_dim)
             self.elastic_alias_txn_view = os.getenv("ELASTIC_ALIAS_TXN_VIEW", self.elastic_alias_txn_view)

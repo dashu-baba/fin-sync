@@ -180,9 +180,3 @@ def render_clarification_mode_indicator(mode: str) -> None:
     elif mode == "clarify":
         st.info("🔍 **Clarification Mode:** I need a bit more information to help you better.")
 
-
-def render_reclassification_progress() -> None:
-    """Render a progress indicator for re-classification."""
-    with st.spinner("🔄 Understanding your clarification..."):
-        st.empty()  # Placeholder for spinner
-
