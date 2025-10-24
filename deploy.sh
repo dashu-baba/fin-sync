@@ -54,7 +54,7 @@ gcloud artifacts repositories create "$ARTIFACT_REPO" \
 
 # Create GCS bucket for file uploads
 echo -e "\n${YELLOW}🪣 Creating GCS bucket for uploads...${NC}"
-BUCKET_NAME="${PROJECT_ID}-finsync-uploads"
+BUCKET_NAME="finsync-user-uploads"
 gcloud storage buckets create "gs://${BUCKET_NAME}" \
     --location="$REGION" \
     --uniform-bucket-level-access \
