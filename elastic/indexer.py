@@ -13,7 +13,7 @@ import time
 from typing import Dict, Any, List, Optional
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import ApiError, NotFoundError, ElasticsearchException
+from elasticsearch.exceptions import ApiError, NotFoundError
 from elasticsearch.helpers import bulk
 
 from core.logger import get_logger
@@ -133,7 +133,7 @@ def ensure_statements_index(index_name: str, *, vector_dim: Optional[int] = None
         vector_dim: Embedding dimension for vector field (optional)
         
     Raises:
-        ElasticsearchException: If index creation fails
+        ApiError: If index creation fails
     """
     log.info(f"Ensuring statements index exists: {index_name}")
     
@@ -176,7 +176,7 @@ def ensure_transactions_index(index_pattern: str, *, vector_dim: Optional[int] =
         vector_dim: Embedding dimension for vector field (optional)
         
     Raises:
-        ElasticsearchException: If data stream creation fails
+        ApiError: If data stream creation fails
         
     Note:
         Uses Elasticsearch data streams for efficient time-series data management.
@@ -236,7 +236,7 @@ def ensure_transaction_alias(alias_name: str, index_pattern: str):
         index_pattern: Index pattern or data stream to point to
         
     Raises:
-        ElasticsearchException: If alias creation fails
+        ApiError: If alias creation fails
     """
     log.info(f"Ensuring transaction alias exists: {alias_name} -> {index_pattern}")
     
@@ -303,7 +303,7 @@ def bulk_index(index: str, docs: List[Dict[str, Any]], *, id_field: Optional[str
         int: Number of successfully indexed documents
         
     Raises:
-        ElasticsearchException: If bulk operation fails catastrophically
+        ApiError: If bulk operation fails catastrophically
         
     Examples:
         >>> docs = [{"id": "1", "name": "Alice"}, {"id": "2", "name": "Bob"}]
@@ -409,7 +409,7 @@ def bulk_index(index: str, docs: List[Dict[str, Any]], *, id_field: Optional[str
         
         return ok
         
-    except ElasticsearchException as e:
+    except ApiError as e:
         log.error(
             f"Elasticsearch error during bulk indexing to {index}: {e}",
             exc_info=True

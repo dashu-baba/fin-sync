@@ -9,7 +9,7 @@ Provides search functions for:
 from __future__ import annotations
 from typing import List, Dict, Any
 
-from elasticsearch.exceptions import ElasticsearchException
+from elasticsearch.exceptions import ApiError
 
 from elastic.client import es
 from elastic.embedding import embed_texts
@@ -177,7 +177,7 @@ def vector_search_transactions(query: str, size: int = 12) -> List[Dict[str, Any
         List of matching transaction documents
         
     Raises:
-        ElasticsearchException: If search fails
+        ApiError: If search fails
     """
     log.info(f"Vector search on transactions: query='{query[:50]}...' size={size}")
     
@@ -198,7 +198,7 @@ def vector_search_transactions(query: str, size: int = 12) -> List[Dict[str, Any
         log.info(f"Vector search completed: found={len(hits)} results")
         return hits
         
-    except ElasticsearchException as e:
+    except ApiError as e:
         log.error(f"Elasticsearch error during vector search: {e}", exc_info=True)
         raise
     except Exception as e:
@@ -219,7 +219,7 @@ def keyword_search_transactions(query: str, filters: Dict[str, Any], size: int =
         List of matching transaction documents
         
     Raises:
-        ElasticsearchException: If search fails
+        ApiError: If search fails
     """
     log.info(
         f"Keyword search on transactions: query='{query[:50]}...' "
@@ -242,7 +242,7 @@ def keyword_search_transactions(query: str, filters: Dict[str, Any], size: int =
         log.info(f"Keyword search completed: found={len(hits)} results")
         return hits
         
-    except ElasticsearchException as e:
+    except ApiError as e:
         log.error(f"Elasticsearch error during keyword search: {e}", exc_info=True)
         raise
     except Exception as e:
