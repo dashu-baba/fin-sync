@@ -40,8 +40,10 @@ Main rendering function that displays the uploaded files UI.
 - Automatically detects storage backend (Local or GCS)
 - Shows summary metrics at the top
 - Lists files with filename and size
+- **Delete button (🗑️)** for each file - NEW!
 - Provides detailed view in expandable section
 - Includes refresh button for real-time updates
+- Auto-refreshes after successful deletion
 
 ## Integration
 
@@ -74,7 +76,7 @@ When no files are uploaded:
 ```
 
 ### With Files
-Shows a clean, organized list:
+Shows a clean, organized list with delete functionality:
 ```
 📁 Previously Uploaded Files                              🔄 Refresh
 
@@ -83,15 +85,44 @@ Shows a clean, organized list:
 │      5                   2.4 MB              GCS        │
 └─────────────────────────────────────────────────────────┘
 
-These files have been successfully uploaded and indexed.
+These files have been successfully uploaded and indexed. Use the 🗑️ button to delete files that failed to process.
 
-1. 📄 statement_jan_2024.pdf                     486.5 KB
-2. 📄 statement_feb_2024.pdf                     512.3 KB
-3. 📄 statement_mar_2024.pdf                     498.7 KB
-4. 📄 statement_apr_2024.pdf                     521.1 KB
-5. 📄 statement_may_2024.pdf                     456.9 KB
+1. 📄 statement_jan_2024.pdf           486.5 KB    [🗑️]
+2. 📄 statement_feb_2024.pdf           512.3 KB    [🗑️]
+3. 📄 statement_mar_2024.pdf           498.7 KB    [🗑️]
+4. 📄 statement_apr_2024.pdf           521.1 KB    [🗑️]
+5. 📄 statement_may_2024.pdf           456.9 KB    [🗑️]
 
 ► 📊 View detailed file information
+```
+
+### Delete Functionality
+
+Each file now has a delete button (🗑️) that allows users to:
+- **Remove failed uploads**: Files that couldn't be parsed or indexed
+- **Clear old files**: Remove files no longer needed
+- **Retry uploads**: Delete and re-upload corrected files
+- **Manage storage**: Free up storage space
+
+**Delete Flow:**
+1. User clicks 🗑️ button
+2. System shows spinner: "Deleting filename.pdf..."
+3. File is removed from storage (local or GCS)
+4. Success message: "✅ Deleted filename.pdf"
+5. Page auto-refreshes to show updated file list
+
+**Integration with Upload Service:**
+```python
+# ui/components/uploaded_files_display.py
+from ui.services import UploadService
+
+if st.button("🗑️", key=f"delete_{file_info['name']}"):
+    with st.spinner(f"Deleting {file_info['name']}..."):
+        if UploadService.delete_file(file_info['name']):
+            st.success(f"✅ Deleted {file_info['name']}")
+            st.rerun()
+        else:
+            st.error(f"❌ Failed to delete {file_info['name']}")
 ```
 
 ## Testing
@@ -116,10 +147,18 @@ The component includes robust error handling:
 - Shows empty state if file retrieval fails
 - Handles individual file read failures
 
+## Implemented Features
+
+- ✅ **Delete file functionality** - Each file has a delete button
+- ✅ **Storage backend support** - Works with local and GCS
+- ✅ **Auto-refresh** - Page refreshes after deletion
+- ✅ **Error handling** - Graceful failure messages
+- ✅ **Summary metrics** - Shows total files and storage
+- ✅ **Detailed view** - Expandable section with full details
+
 ## Future Enhancements
 
-Potential improvements:
-- Delete file functionality
+Potential improvements for future versions:
 - File download button
 - Search/filter uploaded files
 - Sort by date, name, or size
@@ -127,4 +166,5 @@ Potential improvements:
 - Show upload date/time
 - Show indexed vs non-indexed files
 - Bulk operations (delete multiple files)
+- Confirmation dialog before deletion
 

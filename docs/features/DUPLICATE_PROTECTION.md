@@ -244,20 +244,118 @@ Monitor these metrics to track duplicate upload patterns:
 3. **User Behavior**: Frequency of duplicate upload attempts per user
 4. **False Positives**: Cases where legitimate uploads were blocked
 
+## Automatic Cleanup on Failure
+
+### Overview
+
+To prevent files from being permanently blocked after failed uploads, the system now **automatically deletes files** when processing fails. This ensures users can retry uploads without manual intervention.
+
+### When Cleanup Happens
+
+Files are automatically deleted in the following scenarios:
+
+1. **Parsing Failure**
+   - File saved → Parsing fails → **File automatically deleted**
+   - Examples: Validation errors, missing required fields, Vertex AI errors
+   - User sees: "🗑️ Removed {filename} - you can try uploading again."
+
+2. **Duplicate Statement Detection**
+   - File saved → Parsing succeeds → Duplicate found in Elasticsearch → **File automatically deleted**
+   - User sees: "❌ Statement already exists..." error message
+   - File is cleaned up to allow different statement upload
+
+### Implementation
+
+```python
+# In ui/views/ingest_page.py
+saved_filename = None  # Track for cleanup
+try:
+    # Save file
+    meta = UploadService.process_upload(file, password=password)
+    saved_filename = meta["name"]
+    
+    # Parse and process
+    parsed = ParseService.parse_file(...)
+    
+except Exception as e:
+    # Automatic cleanup on failure
+    if saved_filename:
+        UploadService.delete_file(saved_filename)
+        st.info(f"🗑️ Removed {saved_filename} - you can try uploading again.")
+```
+
+### Benefits
+
+- ✅ **No orphaned files** - Failed uploads don't permanently block re-uploads
+- ✅ **Seamless retry** - Users can immediately re-upload after fixing issues
+- ✅ **No manual intervention** - System automatically handles cleanup
+- ✅ **Clear feedback** - Users know when files are removed
+
+## Manual File Deletion
+
+### Delete Button in UI
+
+Users can now manually delete uploaded files through the "Previously Uploaded Files" section:
+
+1. **Location**: Bottom of the Ingest page
+2. **Interface**: Each file has a 🗑️ delete button
+3. **Confirmation**: Click → Spinner → Success/Error message
+4. **Auto-refresh**: List refreshes after successful deletion
+
+### User Interface
+
+```
+📁 Previously Uploaded Files
+────────────────────────────────────────────────────
+Total Files: 3    Total Storage: 2.4 MB    Storage Type: Local
+
+1. 📄 statement_jan.pdf       1.2 MB    [🗑️]
+2. 📄 statement_feb.pdf       1.0 MB    [🗑️]
+3. 📄 statement_mar.pdf       0.2 MB    [🗑️]
+```
+
+### Use Cases
+
+- **Failed Processing**: Remove files that failed to parse/index
+- **Wrong File**: Delete incorrectly uploaded files
+- **Re-upload**: Clear old version before uploading new one
+- **Storage Management**: Free up storage space
+
+### Implementation
+
+```python
+# In ui/components/uploaded_files_display.py
+if st.button("🗑️", key=f"delete_{file_info['name']}"):
+    with st.spinner(f"Deleting {file_info['name']}..."):
+        if UploadService.delete_file(file_info['name']):
+            st.success(f"✅ Deleted {file_info['name']}")
+            st.rerun()
+        else:
+            st.error(f"❌ Failed to delete {file_info['name']}")
+```
+
 ## Support
 
 If users encounter issues with duplicate detection:
 
-1. **Legitimate Re-upload**: If a user needs to re-upload (e.g., better quality scan):
-   - Delete the original file from the upload directory
-   - Or delete the statement data from Elasticsearch
+1. **Legitimate Re-upload**: 
+   - **Automatic**: If upload failed, file is auto-deleted; just retry
+   - **Manual**: Use the 🗑️ button in "Previously Uploaded Files" to delete
+   - **Alternative**: Delete the statement data from Elasticsearch if already indexed
    
 2. **False Positive**: If the system incorrectly flags a duplicate:
    - Check logs for the specific check that failed
    - Verify account numbers and dates in both statements
+   - Use manual delete button to remove the blocking file
    - Contact support with log details
+
+3. **Stuck Files**: If a file won't delete:
+   - Check logs for error details
+   - Verify storage backend permissions (local or GCS)
+   - For local: Check file permissions in `data/uploads/`
+   - For GCS: Verify service account has delete permissions
 
 ## Conclusion
 
-The duplicate upload protection feature provides a robust, multi-layered defense against accidental duplicate uploads while maintaining a smooth user experience. It balances security, performance, and usability to ensure data integrity in the FinSync system.
+The duplicate upload protection feature provides a robust, multi-layered defense against accidental duplicate uploads while maintaining a smooth user experience. With automatic cleanup on failure and manual delete options, the system balances security, performance, and usability to ensure data integrity in the FinSync system.
 

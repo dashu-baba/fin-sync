@@ -47,12 +47,12 @@ class Page(BaseModel):
     }
 
 class ParsedStatement(BaseModel):
-    accountName: str
+    accountName: str | None = None
     accountNo: str
     accountType: str | None = None
     statementFrom: date
     statementTo: date
-    bankName: str
+    bankName: str | None = None
     pages: list[Page]
 
     model_config = {

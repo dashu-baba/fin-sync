@@ -4,6 +4,18 @@
 
 ---
 
+## 🆕 What's New
+
+**[Recent Changes & Updates](./RECENT_CHANGES.md)** - Latest bug fixes, features, and improvements
+
+Recent highlights:
+- ✅ **Automatic file cleanup** on upload failures
+- 🗑️ **Manual file deletion** in UI
+- 🔧 **Optional schema fields** for better robustness
+- 📄 **Enhanced PDF parsing** with improved prompts
+
+---
+
 ## 📚 Documentation Structure
 
 ### 🏗️ [Architecture](./architecture/)

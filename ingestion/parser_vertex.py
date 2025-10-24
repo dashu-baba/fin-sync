@@ -66,6 +66,8 @@ Parse the following bank statement text into this JSON schema:
 Constraints:
 - Use detected currency amounts as numbers (no symbols).
 - Infer accountType if present; otherwise null.
+- For bankName: Look in header, footer, or watermark of the statement. Common locations include top of first page, letterhead, or logo area.
+- For accountName: Look for account holder name, customer name, or beneficiary name.
 - Do NOT hallucinate: if unknown, use null or empty string.
 - Output ONLY valid JSON.
 - Each page should be a separate object in the "pages" array.

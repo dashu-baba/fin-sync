@@ -230,6 +230,26 @@ class UploadService:
             return False, None
     
     @staticmethod
+    def delete_file(filename: str) -> bool:
+        """
+        Delete a file from storage.
+        
+        Args:
+            filename: Name of the file to delete
+            
+        Returns:
+            True if deletion succeeded, False otherwise
+        """
+        try:
+            storage = get_storage_backend()
+            storage.delete_file(filename)
+            log.info(f"Deleted file from storage: {filename}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to delete file {filename}: {e}")
+            return False
+    
+    @staticmethod
     def parse_pdf_info(
         file_path: str,
         password: Optional[str] = None

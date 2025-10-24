@@ -8,6 +8,7 @@ import streamlit as st
 from core.logger import get_logger
 from core.storage import get_storage_backend
 from core.config import config
+from ui.services import UploadService
 
 log = get_logger("ui/components/uploaded_files_display")
 
@@ -106,18 +107,28 @@ def render_uploaded_files_display() -> None:
         storage_type = "GCS" if config.environment == "production" and config.gcs_bucket else "Local"
         st.metric("Storage Type", storage_type)
     
-    st.caption("These files have been successfully uploaded and indexed.")
+    st.caption("These files have been successfully uploaded and indexed. Use the 🗑️ button to delete files that failed to process.")
     
     # Display files in a compact list
     with st.container():
         for idx, file_info in enumerate(files, 1):
-            col1, col2 = st.columns([4, 1])
+            col1, col2, col3 = st.columns([3, 1, 1])
             
             with col1:
                 st.markdown(f"**{idx}.** 📄 `{file_info['name']}`")
             
             with col2:
                 st.markdown(f"<div style='text-align: right;'>{file_info['size_human']}</div>", unsafe_allow_html=True)
+            
+            with col3:
+                # Add delete button for each file
+                if st.button("🗑️", key=f"delete_{file_info['name']}", help="Delete this file", use_container_width=True):
+                    with st.spinner(f"Deleting {file_info['name']}..."):
+                        if UploadService.delete_file(file_info['name']):
+                            st.success(f"✅ Deleted {file_info['name']}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Failed to delete {file_info['name']}")
             
             # Add subtle separator between files
             if idx < len(files):

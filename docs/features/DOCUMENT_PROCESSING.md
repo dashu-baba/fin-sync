@@ -27,12 +27,12 @@ The document processing pipeline transforms unstructured PDFs into searchable, a
 **Extracted fields**:
 ```json
 {
-  "accountName": "John Doe",
+  "accountName": "John Doe",        // Optional - may be null if not found
   "accountNo": "123456789",
-  "accountType": "Savings",
+  "accountType": "Savings",         // Optional
   "statementFrom": "2025-01-01",
   "statementTo": "2025-01-31",
-  "bankName": "ABC Bank",
+  "bankName": "ABC Bank",           // Optional - may be null if not found
   "statements": [
     {
       "statementDate": "2025-01-02",
@@ -259,13 +259,15 @@ def parse_statement_with_vertex(
 Extract financial data from this bank statement and return JSON.
 
 Required fields:
-- accountName: string (account holder name)
-- accountNo: string (account number)
-- accountType: string (Savings, Checking, etc.)
-- statementFrom: date (YYYY-MM-DD)
-- statementTo: date (YYYY-MM-DD)
-- bankName: string
-- statements: array of transactions
+- accountNo: string (account number) - **Required**
+- statementFrom: date (YYYY-MM-DD) - **Required**
+- statementTo: date (YYYY-MM-DD) - **Required**
+- statements: array of transactions - **Required**
+
+Optional fields:
+- accountName: string (account holder name) - Defaults to "Unknown" if not found
+- accountType: string (Savings, Checking, etc.) - Can be null
+- bankName: string - Defaults to "Unknown" if not found
 
 Transaction fields:
 - statementDate: date (YYYY-MM-DD)
@@ -332,13 +334,13 @@ class Transaction(BaseModel):
 
 class ParsedStatement(BaseModel):
     """Complete statement model."""
-    accountName: str = Field(min_length=1)
-    accountNo: str = Field(pattern=r"^\d+$")  # Numeric string
-    accountType: str | None = None
-    statementFrom: date
-    statementTo: date
-    bankName: str = Field(min_length=1)
-    statements: list[Transaction] = Field(min_items=1)
+    accountName: str | None = None  # Optional - defaults to "Unknown" in display
+    accountNo: str = Field(pattern=r"^\d+$")  # Numeric string - REQUIRED
+    accountType: str | None = None  # Optional
+    statementFrom: date  # REQUIRED
+    statementTo: date  # REQUIRED
+    bankName: str | None = None  # Optional - defaults to "Unknown" in display
+    statements: list[Transaction] = Field(min_items=1)  # REQUIRED
     
     @field_validator("statementTo")
     @classmethod

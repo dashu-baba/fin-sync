@@ -166,8 +166,8 @@ class ParseService:
             )
         
             summary_text = (
-                f"Account: {parsed.accountName}\n"
-                f"Bank: {parsed.bankName}\n"
+                f"Account: {parsed.accountName or 'Unknown'}\n"
+                f"Bank: {parsed.bankName or 'Unknown'}\n"
                 f"Range: {parsed.statementFrom}..{parsed.statementTo}\n"
                 f"Page: {page.pageNumber}\n"
                 f"Transactions:\n{head_txn}"

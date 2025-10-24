@@ -84,6 +84,48 @@ result = execute_intent(query, intent_response)
 
 ---
 
+## Upload Services
+
+### UploadService
+
+```python
+from ui.services import UploadService
+
+# Check for duplicate by filename
+exists = UploadService.check_duplicate_by_name("statement.pdf")
+
+# Check for duplicate by content hash
+file_content = file.getvalue()
+is_duplicate, existing_filename = UploadService.check_duplicate_by_hash(file_content)
+
+# Check for duplicate statement in Elasticsearch
+is_duplicate, existing_file = UploadService.check_duplicate_in_elasticsearch(
+    account_no="123456",
+    statement_from="2025-01-01",
+    statement_to="2025-01-31"
+)
+
+# Process file upload
+meta = UploadService.process_upload(
+    file=uploaded_file,
+    password="optional_password"
+)
+
+# Delete file from storage
+success = UploadService.delete_file("statement.pdf")
+```
+
+**Key Methods:**
+
+- `check_duplicate_by_name(filename)` - Check if filename exists in storage
+- `check_duplicate_by_hash(file_content)` - Check if file content already uploaded
+- `check_duplicate_in_elasticsearch(account_no, statement_from, statement_to)` - Check for duplicate statement period
+- `validate_files(files)` - Validate uploaded files against constraints
+- `process_upload(file, password)` - Save file to storage and return metadata
+- `delete_file(filename)` - Delete file from storage backend (local or GCS)
+
+---
+
 ## Models
 
 ### ParsedStatement
@@ -92,14 +134,16 @@ result = execute_intent(query, intent_response)
 from models.schema import ParsedStatement
 
 parsed = ParsedStatement(
-    accountName="John Doe",
+    accountName="John Doe",       # Optional - can be None
     accountNo="123456",
     statementFrom=date(2025, 1, 1),
     statementTo=date(2025, 1, 31),
-    bankName="ABC Bank",
+    bankName="ABC Bank",          # Optional - can be None
     statements=[...]
 )
 ```
+
+**Note:** `accountName` and `bankName` are now optional fields. If not found during parsing, they default to `None` and display as "Unknown" in the UI.
 
 ### IntentClassification
 

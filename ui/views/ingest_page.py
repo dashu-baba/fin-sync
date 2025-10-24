@@ -89,6 +89,7 @@ def _handle_upload_and_index(files, password: str) -> None:
         txn_docs: List[Dict] = []
         
         for file in files:
+            saved_filename = None  # Track if file was saved for cleanup on failure
             try:
                 # Step 1: Save file (using storage backend, no session directories)
                 status.update(label=f"Saving {file.name}...", state="running")
@@ -96,6 +97,8 @@ def _handle_upload_and_index(files, password: str) -> None:
                 if not meta:
                     st.error(f"❌ Could not save: {file.name}")
                     continue
+                
+                saved_filename = meta["name"]  # Track saved file for cleanup
                 
                 # Step 2: Parse with Vertex AI
                 status.update(label=f"Parsing {file.name} with Vertex AI...", state="running")
@@ -132,6 +135,10 @@ def _handle_upload_and_index(files, password: str) -> None:
                         f"Upload blocked: duplicate statement for account {account_no}, "
                         f"period {statement_from} to {statement_to}"
                     )
+                    # Clean up the saved file since we're not processing it
+                    if saved_filename:
+                        UploadService.delete_file(saved_filename)
+                        log.info(f"Cleaned up file after duplicate detection: {saved_filename}")
                     return
                 
                 # Step 3: Ensure indices exist
@@ -168,6 +175,13 @@ def _handle_upload_and_index(files, password: str) -> None:
                 log.error(f"Failed to process {file.name}: {e!r}")
                 status.update(label=f"Error processing {file.name}", state="error")
                 st.error(f"❌ Failed to process {file.name}: {str(e)}")
+                
+                # Clean up the saved file since processing failed
+                if saved_filename:
+                    UploadService.delete_file(saved_filename)
+                    log.info(f"Cleaned up file after processing failure: {saved_filename}")
+                    st.info(f"🗑️ Removed {saved_filename} - you can try uploading again.")
+                
                 return
         
         # Step 5: Index to Elasticsearch
