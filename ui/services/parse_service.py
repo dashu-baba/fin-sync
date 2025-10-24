@@ -1,12 +1,14 @@
 """Parsing and indexing business logic service."""
 from __future__ import annotations
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, List, Dict, Optional, Tuple
 
 from core.config import config
 from core.logger import get_logger
 from core.utils import make_id
+from core.storage import get_storage_backend
 from ingestion import parse_pdf_to_json
 from ingestion.parser_vertex import parse_csv_to_json
 from elastic import embed_texts, start_transform, wait_for_first_checkpoint, ensure_transform_monthly
@@ -37,6 +39,57 @@ class ParseService:
         return True, None
     
     @staticmethod
+    def _download_gcs_file_if_needed(file_path: str) -> Tuple[str, bool]:
+        """
+        Download file from GCS to a temporary location if it's a GCS path.
+        
+        Args:
+            file_path: Path to file (local or gs:// URL)
+            
+        Returns:
+            Tuple of (local_path, is_temporary)
+            - local_path: Path to use for parsing (local file)
+            - is_temporary: True if file was downloaded and should be cleaned up
+        """
+        # Check if it's a GCS path
+        if file_path.startswith("gs://"):
+            log.info(f"Downloading file from GCS: {file_path}")
+            
+            try:
+                # Extract filename from GCS path
+                filename = Path(file_path).name
+                
+                # Get storage backend and read file
+                storage = get_storage_backend()
+                
+                # Extract the path within the bucket (remove gs://bucket-name/)
+                # Format: gs://bucket-name/path/to/file.pdf -> path/to/file.pdf
+                parts = file_path.replace("gs://", "").split("/", 1)
+                if len(parts) == 2:
+                    gcs_path = parts[1]  # Get the path within bucket
+                else:
+                    gcs_path = filename  # Just the filename
+                
+                file_content = storage.read_file(gcs_path)
+                
+                # Create temporary file
+                temp_fd, temp_path = tempfile.mkstemp(suffix=f"_{filename}")
+                try:
+                    os.write(temp_fd, file_content)
+                finally:
+                    os.close(temp_fd)
+                
+                log.info(f"Downloaded to temporary file: {temp_path}")
+                return temp_path, True
+                
+            except Exception as e:
+                log.error(f"Failed to download file from GCS: {file_path}, error: {e!r}")
+                raise
+        else:
+            # Local file path - use as-is
+            return file_path, False
+    
+    @staticmethod
     def parse_file(
         file_path: str,
         file_ext: str,
@@ -46,6 +99,7 @@ class ParseService:
     ) -> ParsedStatement:
         """
         Parse a single file (PDF or CSV) using Vertex AI.
+        Automatically handles GCS paths by downloading first.
         
         Returns:
             Parsed statement object or None if parsing failed.
@@ -53,18 +107,30 @@ class ParseService:
         gcp_project = gcp_project or config.gcp_project_id or os.getenv("GCP_PROJECT_ID")
         gcp_location = gcp_location or config.gcp_location or os.getenv("GCP_LOCATION", "us-central1")
         
+        # Download from GCS if needed
+        local_path, is_temp = ParseService._download_gcs_file_if_needed(file_path)
+        
         try:
             # TODO: Add CSV support
-            return parse_pdf_to_json(
-                    file_path,
+            result = parse_pdf_to_json(
+                    local_path,
                     password,
                     gcp_project=gcp_project,
                     gcp_location=gcp_location,
                     vertex_model=config.vertex_model
                 )
+            return result
         except Exception as e:
             log.error(f"Failed to parse {Path(file_path).name}: {e!r}")
             raise
+        finally:
+            # Clean up temporary file if we created one
+            if is_temp:
+                try:
+                    os.unlink(local_path)
+                    log.debug(f"Cleaned up temporary file: {local_path}")
+                except Exception as e:
+                    log.warning(f"Failed to clean up temporary file {local_path}: {e}")
     
     @staticmethod
     def create_statement_docs(
