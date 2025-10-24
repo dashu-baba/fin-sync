@@ -227,3 +227,95 @@ def make_id(*parts: str) -> str:
     )
     
     return hash_id
+
+
+def format_currency(amount: Union[int, float], currency: str | None = None) -> str:
+    """
+    Format an amount with the appropriate currency symbol or code.
+    
+    Supports common currency codes and provides appropriate formatting.
+    Falls back to USD if currency is not provided or not recognized.
+    
+    Args:
+        amount: Numeric amount to format
+        currency: ISO 4217 currency code (e.g., "USD", "EUR", "BDT", "GBP", "INR")
+                 or None to default to USD
+        
+    Returns:
+        str: Formatted currency string (e.g., "$1,234.56", "€1,234.56", "৳1,234.56")
+        
+    Examples:
+        >>> format_currency(1234.56, "USD")
+        "$1,234.56"
+        >>> format_currency(1234.56, "EUR")
+        "€1,234.56"
+        >>> format_currency(1234.56, "BDT")
+        "৳1,234.56"
+        >>> format_currency(1234.56, None)
+        "$1,234.56"
+    """
+    # Currency symbol mapping
+    CURRENCY_SYMBOLS = {
+        "USD": "$",
+        "EUR": "€",
+        "GBP": "£",
+        "BDT": "৳",
+        "INR": "₹",
+        "JPY": "¥",
+        "CNY": "¥",
+        "AUD": "A$",
+        "CAD": "C$",
+        "CHF": "CHF",
+        "SGD": "S$",
+        "AED": "د.إ",
+        "SAR": "﷼",
+        "QAR": "ر.ق",
+        "THB": "฿",
+        "MYR": "RM",
+        "IDR": "Rp",
+        "PHP": "₱",
+        "KRW": "₩",
+        "TWD": "NT$",
+        "HKD": "HK$",
+        "NZD": "NZ$",
+        "SEK": "kr",
+        "NOK": "kr",
+        "DKK": "kr",
+        "PLN": "zł",
+        "CZK": "Kč",
+        "HUF": "Ft",
+        "RUB": "₽",
+        "TRY": "₺",
+        "ZAR": "R",
+        "BRL": "R$",
+        "MXN": "Mex$",
+        "ARS": "AR$",
+        "CLP": "CLP$",
+        "COP": "COL$",
+        "PEN": "S/",
+        "PKR": "₨",
+        "LKR": "Rs",
+        "NPR": "Rs",
+        "MMK": "K",
+        "VND": "₫",
+        "KHR": "៛",
+        "LAK": "₭",
+        "EGP": "E£",
+        "KES": "KSh",
+        "NGN": "₦",
+        "GHS": "₵",
+        "MAD": "د.م.",
+        "TND": "د.ت",
+    }
+    
+    # Normalize currency code
+    currency_code = (currency or "USD").upper().strip()
+    
+    # Get symbol, fallback to currency code if not found
+    symbol = CURRENCY_SYMBOLS.get(currency_code, currency_code)
+    
+    # Format amount with commas and 2 decimal places
+    formatted_amount = f"{amount:,.2f}"
+    
+    # Return formatted string
+    return f"{symbol}{formatted_amount}"

@@ -7,6 +7,9 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 from core.logger import get_logger
+from core.utils import format_currency
+from core.config import config
+from elastic.client import es
 from elastic.analytics import (
     get_monthly_inflow_outflow,
     get_available_accounts,
@@ -14,6 +17,81 @@ from elastic.analytics import (
 )
 
 log = get_logger("ui/components/analytics_view")
+
+
+def _get_currency_from_transactions(filters: Dict[str, Any]) -> str:
+    """
+    Get the currency from transactions based on filters.
+    Returns the most common currency in the filtered dataset, or USD as default.
+    """
+    try:
+        client = es()
+        
+        # Build a query to get currency from transactions
+        query = {
+            "size": 0,
+            "aggs": {
+                "currencies": {
+                    "terms": {
+                        "field": "currency",
+                        "size": 10
+                    }
+                }
+            }
+        }
+        
+        # Add filters if present
+        must_conditions = []
+        if filters.get("start_date"):
+            must_conditions.append({
+                "range": {
+                    "@timestamp": {
+                        "gte": filters["start_date"].strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    }
+                }
+            })
+        if filters.get("end_date"):
+            must_conditions.append({
+                "range": {
+                    "@timestamp": {
+                        "lte": filters["end_date"].strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    }
+                }
+            })
+        if filters.get("account_numbers"):
+            must_conditions.append({
+                "terms": {
+                    "accountNo": filters["account_numbers"]
+                }
+            })
+        
+        if must_conditions:
+            query["query"] = {
+                "bool": {
+                    "must": must_conditions
+                }
+            }
+        
+        response = client.search(
+            index=config.elastic_index_transactions,
+            body=query
+        )
+        
+        # Get the most common currency
+        buckets = response.get("aggregations", {}).get("currencies", {}).get("buckets", [])
+        if buckets:
+            # Return the currency with the highest doc_count
+            most_common_currency = buckets[0].get("key")
+            if most_common_currency:
+                log.debug(f"Using currency from transactions: {most_common_currency}")
+                return most_common_currency
+        
+        log.debug("No currency found in transactions, defaulting to USD")
+        return "USD"
+        
+    except Exception as e:
+        log.warning(f"Error fetching currency from transactions: {e}, defaulting to USD")
+        return "USD"
 
 
 def render(filters: Dict[str, Any]) -> None:
@@ -29,9 +107,12 @@ def render(filters: Dict[str, Any]) -> None:
     # Fetch rollup data
     rollup_data = _fetch_rollup_data(filters)
     
+    # Get currency from transactions
+    currency = _get_currency_from_transactions(filters)
+    
     # Overview metrics section
     st.subheader("📈 Overview Metrics")
-    _render_kpi_cards(rollup_data)
+    _render_kpi_cards(rollup_data, currency)
     
     st.divider()
     
@@ -45,16 +126,16 @@ def render(filters: Dict[str, Any]) -> None:
     ])
     
     with chart_tab1:
-        _render_monthly_cash_flow(rollup_data, filters)
+        _render_monthly_cash_flow(rollup_data, filters, currency)
     
     with chart_tab2:
-        _render_spending_trends(rollup_data, filters)
+        _render_spending_trends(rollup_data, filters, currency)
     
     st.divider()
     
     # Tables section
     st.subheader("📋 Detailed Tables")
-    _render_transaction_tables(rollup_data, filters)
+    _render_transaction_tables(rollup_data, filters, currency)
 
 
 def _initialize_transforms() -> None:
@@ -101,7 +182,7 @@ def _fetch_rollup_data(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
 
 
-def _render_kpi_cards(rollup_data: List[Dict[str, Any]]) -> None:
+def _render_kpi_cards(rollup_data: List[Dict[str, Any]], currency: str) -> None:
     """Render KPI metric cards."""
     # Calculate totals from rollup data
     total_inflow = sum(record.get("inflow", 0) for record in rollup_data)
@@ -119,21 +200,21 @@ def _render_kpi_cards(rollup_data: List[Dict[str, Any]]) -> None:
     with col1:
         st.metric(
             label="Total Income",
-            value=f"${total_inflow:,.2f}",
+            value=format_currency(total_inflow, currency),
             help="Total credits in selected period"
         )
     
     with col2:
         st.metric(
             label="Total Expenses",
-            value=f"${total_outflow:,.2f}",
+            value=format_currency(total_outflow, currency),
             help="Total debits in selected period"
         )
     
     with col3:
         st.metric(
             label="Net Savings",
-            value=f"${net_savings:,.2f}",
+            value=format_currency(net_savings, currency),
             delta=f"{(net_savings/total_inflow*100) if total_inflow > 0 else 0:.1f}%",
             help="Income minus expenses"
         )
@@ -146,7 +227,7 @@ def _render_kpi_cards(rollup_data: List[Dict[str, Any]]) -> None:
         )
 
 
-def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any]) -> None:
+def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any], currency: str) -> None:
     """Render monthly inflow/outflow chart."""
     st.markdown("### 💰 Monthly Inflow vs Outflow")
     
@@ -190,7 +271,7 @@ def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[s
         y=monthly_summary['inflow'],
         name='Inflow (Credits)',
         marker_color='#10b981',  # Green
-        text=monthly_summary['inflow'].apply(lambda x: f'${x:,.0f}'),
+        text=monthly_summary['inflow'].apply(lambda x: format_currency(x, currency).replace('.00', '')),
         textposition='auto',
     ))
     
@@ -200,7 +281,7 @@ def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[s
         y=monthly_summary['outflow'],
         name='Outflow (Debits)',
         marker_color='#ef4444',  # Red
-        text=monthly_summary['outflow'].apply(lambda x: f'${x:,.0f}'),
+        text=monthly_summary['outflow'].apply(lambda x: format_currency(x, currency).replace('.00', '')),
         textposition='auto',
     ))
     
@@ -243,9 +324,9 @@ def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[s
     with st.expander("📊 View Data Table"):
         summary_display = monthly_summary.copy()
         summary_display.columns = ['Month', 'Inflow', 'Outflow', 'Transactions', 'Net Flow']
-        summary_display['Inflow'] = summary_display['Inflow'].apply(lambda x: f'${x:,.2f}')
-        summary_display['Outflow'] = summary_display['Outflow'].apply(lambda x: f'${x:,.2f}')
-        summary_display['Net Flow'] = summary_display['Net Flow'].apply(lambda x: f'${x:,.2f}')
+        summary_display['Inflow'] = summary_display['Inflow'].apply(lambda x: format_currency(x, currency))
+        summary_display['Outflow'] = summary_display['Outflow'].apply(lambda x: format_currency(x, currency))
+        summary_display['Net Flow'] = summary_display['Net Flow'].apply(lambda x: format_currency(x, currency))
         st.dataframe(summary_display, use_container_width=True, hide_index=True)
     
     # Account breakdown if multiple accounts
@@ -290,7 +371,7 @@ def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[s
         st.plotly_chart(fig_accounts, use_container_width=True)
 
 
-def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any]) -> None:
+def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any], currency: str) -> None:
     """Render spending trends over time chart."""
     st.markdown("### 📈 Spending & Income Trends")
     
@@ -377,13 +458,13 @@ def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str
         col1, col2, col3 = st.columns(3)
         with col1:
             avg_inflow = monthly_summary['inflow'].mean()
-            st.metric("Avg Monthly Inflow", f"${avg_inflow:,.2f}")
+            st.metric("Avg Monthly Inflow", format_currency(avg_inflow, currency))
         with col2:
             avg_outflow = monthly_summary['outflow'].mean()
-            st.metric("Avg Monthly Outflow", f"${avg_outflow:,.2f}")
+            st.metric("Avg Monthly Outflow", format_currency(avg_outflow, currency))
         with col3:
             avg_net = avg_inflow - avg_outflow
-            st.metric("Avg Monthly Net", f"${avg_net:,.2f}")
+            st.metric("Avg Monthly Net", format_currency(avg_net, currency))
     
     with trend_tab2:
         st.markdown("#### Cumulative Trends")
@@ -444,11 +525,11 @@ def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Inflow", f"${total_inflow:,.2f}")
+            st.metric("Total Inflow", format_currency(total_inflow, currency))
         with col2:
-            st.metric("Total Outflow", f"${total_outflow:,.2f}")
+            st.metric("Total Outflow", format_currency(total_outflow, currency))
         with col3:
-            st.metric("Total Net", f"${total_net:,.2f}", 
+            st.metric("Total Net", format_currency(total_net, currency), 
                      delta=f"{(total_net/total_inflow*100) if total_inflow > 0 else 0:.1f}% savings rate")
     
     with trend_tab3:
@@ -522,7 +603,7 @@ def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str
             st.info("Need at least 2 months of data to show growth trends.")
 
 
-def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any]) -> None:
+def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any], currency: str) -> None:
     """Render detailed transaction tables."""
     # Create tabs for different table views
     table_tab1, table_tab2, table_tab3 = st.tabs([
@@ -555,7 +636,7 @@ def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[
             
             # Format currency columns
             for col in ['Inflow', 'Outflow', 'Net Savings']:
-                summary[col] = summary[col].apply(lambda x: f'${x:,.2f}')
+                summary[col] = summary[col].apply(lambda x: format_currency(x, currency))
             
             st.dataframe(summary, use_container_width=True, hide_index=True)
     
@@ -581,7 +662,7 @@ def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[
             
             # Format currency columns
             for col in ['Total Inflow', 'Total Outflow', 'Net', 'Avg Monthly Inflow', 'Avg Monthly Outflow']:
-                account_summary[col] = account_summary[col].apply(lambda x: f'${x:,.2f}')
+                account_summary[col] = account_summary[col].apply(lambda x: format_currency(x, currency))
             
             st.dataframe(account_summary, use_container_width=True, hide_index=True)
     
@@ -615,11 +696,11 @@ def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[
                     f'{total_months}',
                     f'{total_accounts}',
                     f'{total_tx:,}',
-                    f'${total_inflow:,.2f}',
-                    f'${total_outflow:,.2f}',
-                    f'${total_inflow - total_outflow:,.2f}',
-                    f'${total_inflow / total_months:,.2f}' if total_months > 0 else '$0.00',
-                    f'${total_outflow / total_months:,.2f}' if total_months > 0 else '$0.00',
+                    format_currency(total_inflow, currency),
+                    format_currency(total_outflow, currency),
+                    format_currency(total_inflow - total_outflow, currency),
+                    format_currency(total_inflow / total_months, currency) if total_months > 0 else format_currency(0, currency),
+                    format_currency(total_outflow / total_months, currency) if total_months > 0 else format_currency(0, currency),
                     f'{total_tx / total_months:.1f}' if total_months > 0 else '0'
                 ]
             }

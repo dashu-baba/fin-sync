@@ -53,13 +53,14 @@ class ParsedStatement(BaseModel):
     statementFrom: date
     statementTo: date
     bankName: str | None = None
+    currency: str | None = None
     pages: list[Page]
 
     model_config = {
         "extra": "forbid",
     }
 
-    @field_validator("accountName", "bankName", "accountType", mode="before")
+    @field_validator("accountName", "bankName", "accountType", "currency", mode="before")
     @classmethod
     def _strip_strings(cls, value):
         if value is None:

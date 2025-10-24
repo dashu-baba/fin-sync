@@ -3,6 +3,18 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 from typing import Dict, Any, List
+from core.utils import format_currency
+
+
+def _get_currency_from_results(data: Dict[str, Any]) -> str:
+    """Extract currency from result data, defaulting to USD."""
+    # Try to get currency from hits
+    hits = data.get("hits", [])
+    if hits and isinstance(hits, list) and len(hits) > 0:
+        currency = hits[0].get("currency")
+        if currency:
+            return currency
+    return "USD"
 
 
 def render_aggregate_results(data: Dict[str, Any]) -> None:
@@ -13,6 +25,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
         data: Result data from aggregate execution
     """
     aggs = data.get("aggs", {})
+    currency = _get_currency_from_results(data)
     
     if not aggs:
         st.info("No aggregation data available")
@@ -26,7 +39,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
         with cols[0]:
             st.metric(
                 label="💰 Total Income",
-                value=f"${aggs['sum_income']:,.2f}",
+                value=format_currency(aggs['sum_income'], currency),
                 delta=None
             )
     
@@ -35,7 +48,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
         with cols[1]:
             st.metric(
                 label="💸 Total Expenses",
-                value=f"${aggs['sum_expense']:,.2f}",
+                value=format_currency(aggs['sum_expense'], currency),
                 delta=None
             )
     
@@ -45,7 +58,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
         with cols[2]:
             st.metric(
                 label="📊 Net",
-                value=f"${abs(net):,.2f}",
+                value=format_currency(abs(net), currency),
                 delta=f"{'Profit' if net >= 0 else 'Loss'}"
             )
     
@@ -62,7 +75,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
     if "top_merchants" in aggs and aggs["top_merchants"]:
         st.subheader("🏪 Top Merchants")
         merchants_df = pd.DataFrame(aggs["top_merchants"])
-        merchants_df["total_amount"] = merchants_df["total_amount"].apply(lambda x: f"${x:,.2f}")
+        merchants_df["total_amount"] = merchants_df["total_amount"].apply(lambda x: format_currency(x, currency))
         st.dataframe(
             merchants_df,
             column_config={
@@ -78,7 +91,7 @@ def render_aggregate_results(data: Dict[str, Any]) -> None:
     if "top_categories" in aggs and aggs["top_categories"]:
         st.subheader("📂 Top Categories")
         categories_df = pd.DataFrame(aggs["top_categories"])
-        categories_df["total_amount"] = categories_df["total_amount"].apply(lambda x: f"${x:,.2f}")
+        categories_df["total_amount"] = categories_df["total_amount"].apply(lambda x: format_currency(x, currency))
         st.dataframe(
             categories_df,
             column_config={
@@ -100,6 +113,7 @@ def render_trend_results(data: Dict[str, Any]) -> None:
     """
     buckets = data.get("buckets", [])
     granularity = data.get("granularity", "monthly")
+    currency = _get_currency_from_results(data)
     
     if not buckets:
         st.info("No trend data available")
@@ -130,17 +144,17 @@ def render_trend_results(data: Dict[str, Any]) -> None:
     
     with cols[0]:
         total_income = df["income"].sum()
-        st.metric("Total Income", f"${total_income:,.2f}")
+        st.metric("Total Income", format_currency(total_income, currency))
     
     with cols[1]:
         total_expense = df["expense"].sum()
-        st.metric("Total Expenses", f"${total_expense:,.2f}")
+        st.metric("Total Expenses", format_currency(total_expense, currency))
     
     with cols[2]:
         total_net = df["net"].sum()
         st.metric(
             "Total Net",
-            f"${abs(total_net):,.2f}",
+            format_currency(abs(total_net), currency),
             delta="Profit" if total_net >= 0 else "Loss"
         )
     
@@ -148,9 +162,9 @@ def render_trend_results(data: Dict[str, Any]) -> None:
     with st.expander("📊 View Data Table"):
         display_df = df.copy()
         display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
-        display_df["income"] = display_df["income"].apply(lambda x: f"${x:,.2f}")
-        display_df["expense"] = display_df["expense"].apply(lambda x: f"${x:,.2f}")
-        display_df["net"] = display_df["net"].apply(lambda x: f"${x:,.2f}")
+        display_df["income"] = display_df["income"].apply(lambda x: format_currency(x, currency))
+        display_df["expense"] = display_df["expense"].apply(lambda x: format_currency(x, currency))
+        display_df["net"] = display_df["net"].apply(lambda x: format_currency(x, currency))
         
         st.dataframe(
             display_df,
@@ -175,6 +189,7 @@ def render_listing_results(data: Dict[str, Any]) -> None:
     """
     hits = data.get("hits", [])
     total = data.get("total", 0)
+    currency = _get_currency_from_results(data)
     
     if not hits:
         st.info("No transactions found")
@@ -190,10 +205,10 @@ def render_listing_results(data: Dict[str, Any]) -> None:
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
     
     if "amount" in df.columns:
-        df["amount_display"] = df["amount"].apply(lambda x: f"${x:,.2f}")
+        df["amount_display"] = df["amount"].apply(lambda x: format_currency(x, currency))
     
     if "balance" in df.columns:
-        df["balance_display"] = df["balance"].apply(lambda x: f"${x:,.2f}")
+        df["balance_display"] = df["balance"].apply(lambda x: format_currency(x, currency))
     
     # Select and order columns
     display_columns = []

@@ -44,6 +44,7 @@ Parse the following bank statement text into this JSON schema:
   "statementFrom": "YYYY-MM-DD",
   "statementTo": "YYYY-MM-DD",
   "bankName": string,
+  "currency": string | null,
   "pages": [
     {{
         "pageNumber": number,
@@ -65,6 +66,7 @@ Parse the following bank statement text into this JSON schema:
 
 Constraints:
 - Use detected currency amounts as numbers (no symbols).
+- For currency: Extract the currency code (USD, EUR, GBP, BDT, INR, etc.) or symbol mentioned in the statement. Look for currency indicators in amounts, headers, or account details. Use ISO 4217 currency codes if possible (e.g., "USD" for US Dollar, "BDT" for Bangladeshi Taka).
 - Infer accountType if present; otherwise null.
 - For bankName: Look in header, footer, or watermark of the statement. Common locations include top of first page, letterhead, or logo area.
 - For accountName: Look for account holder name, customer name, or beneficiary name.

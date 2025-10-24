@@ -262,7 +262,7 @@ class ParseService:
                 "amount": float(txn.statementAmount),
                 "description": txn.statementDescription or "",
                 "category": None,
-                "currency": None,
+                "currency": parsed.currency,
                 "sourceStatementId": statement_id,
                 "sourceFile": source_file,
                 "timestamp": str(txn.statementDate),
