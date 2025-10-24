@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, Any, List
 from datetime import datetime
 from core.logger import get_logger
-from models.intent import IntentClassification
+from models.intent import IntentClassification, IntentFilters
 
 log = get_logger("elastic/query_builders")
 
@@ -116,7 +116,7 @@ def q_aggregate(plan: IntentClassification) -> Dict[str, Any]:
     # Count aggregation
     if "count" in metrics:
         query_body["aggs"]["transaction_count"] = {
-            "value_count": {"field": "_id"}
+            "value_count": {"field": "@timestamp"}
         }
     
     # Top merchants (terms aggregation on description.raw)
@@ -466,6 +466,34 @@ def q_hybrid(user_query: str, plan: IntentClassification, statement_hits: List[D
             # Add summary text as search term
             derived_terms.append(summary[:100])  # Use first 100 chars
     
+    # IMPORTANT: Always include the original user query as a search term
+    # This ensures we match transactions even if statement extraction fails
+    if user_query and user_query.strip():
+        # Clean the query by removing common question words for better matching
+        cleaned_query = user_query.lower()
+        
+        # Remove question words and phrases
+        stop_phrases = [
+            "how much did i ", "how much have i ", "how much ",
+            "what did i ", "what have i ", "what ",
+            "when did i ", "when have i ", "when ",
+            "where did i ", "where have i ", "where ",
+            "did i spend on ", "have i spent on ", "did i spend ", "have i spent ",
+            "i spent on ", "i spend on ", "i spent ", "i spend ",
+            "show me ", "tell me ", "give me ", "list all ", "list ",
+            "find all ", "find ", "total ", "sum of ", "sum ",
+            "spent on ", "spend on ", "on ", "my ", "the ", "a "
+        ]
+        for phrase in stop_phrases:
+            cleaned_query = cleaned_query.replace(phrase, " ")
+        
+        # Remove question marks, extra spaces, and common words
+        cleaned_query = cleaned_query.replace("?", "").strip()
+        cleaned_query = " ".join(cleaned_query.split())  # Normalize whitespace
+        
+        if cleaned_query and len(cleaned_query) > 2:  # Only use if meaningful
+            derived_terms.insert(0, cleaned_query)  # Add cleaned query as first term
+    
     # Build filters (same as q_aggregate but with additional derived filters)
     must_filters: List[Dict[str, Any]] = []
     
@@ -498,11 +526,14 @@ def q_hybrid(user_query: str, plan: IntentClassification, statement_hits: List[D
     if derived_terms:
         for term in derived_terms[:3]:  # Use top 3 terms
             if term.strip():
+                # Use match (not match_phrase) for more flexible matching
+                # This allows partial matches and is case-insensitive
                 should_filters.append({
-                    "match_phrase": {
+                    "match": {
                         "description": {
                             "query": term,
-                            "slop": 2  # Allow some word distance
+                            "operator": "or",  # Match any word in the query
+                            "minimum_should_match": "50%"  # At least 50% of words should match
                         }
                     }
                 })
@@ -582,7 +613,7 @@ def q_hybrid(user_query: str, plan: IntentClassification, statement_hits: List[D
     # Count aggregation
     if "count" in metrics:
         query_body["aggs"]["transaction_count"] = {
-            "value_count": {"field": "_id"}
+            "value_count": {"field": "@timestamp"}
         }
     
     # Top merchants

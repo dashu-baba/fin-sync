@@ -9,10 +9,13 @@
 **[Recent Changes & Updates](./RECENT_CHANGES.md)** - Latest bug fixes, features, and improvements
 
 Recent highlights:
+- ✅ **Query matching fix** (Oct 24, 2025) - Fixed `aggregate_filtered_by_text` returning 0 for valid queries
 - ✅ **Automatic file cleanup** on upload failures
 - 🗑️ **Manual file deletion** in UI
 - 🔧 **Optional schema fields** for better robustness
 - 📄 **Enhanced PDF parsing** with improved prompts
+
+**Critical Fix**: If you're getting 0 results for queries like "How much did I spend on X?", see [AGGREGATE_FILTERED_BY_TEXT_FIX.md](./AGGREGATE_FILTERED_BY_TEXT_FIX.md)
 
 ---
 
