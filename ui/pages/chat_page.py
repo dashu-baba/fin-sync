@@ -16,7 +16,8 @@ from ui.components import (
     render_confirmation_dialog,
     render_clarification_dialog,
     render_conversation_context_display,
-    render_clarification_mode_indicator
+    render_clarification_mode_indicator,
+    render_intent_results
 )
 
 log = get_logger("ui/pages/chat_page")
@@ -47,14 +48,18 @@ def render() -> None:
         history = SessionManager.get_chat_history()
         render_chat_history(history, max_turns=10)
         
-        # Query input at the bottom
-        user_query = st.text_input(
+        # Check if processing is in progress
+        is_processing = st.session_state.get("is_processing", False)
+        
+        # Query input at the bottom using chat_input (combines input + send button, handles Enter key)
+        user_query = st.chat_input(
             "Ask about your finances…",
-            placeholder="e.g., 'Summarize my expenses for last month' or 'Show me all transactions over $500'"
+            disabled=is_processing,
+            key="chat_input"
         )
         
-        # Search and answer
-        if st.button("Send", type="primary") and user_query.strip():
+        # Process query when submitted (via Enter or send button)
+        if user_query and user_query.strip():
             _handle_new_query(user_query.strip())
 
 
@@ -165,6 +170,9 @@ def _handle_new_query(query: str) -> None:
     Args:
         query: User's query string
     """
+    # Set processing flag to disable input
+    st.session_state["is_processing"] = True
+    
     try:
         # Step 1: Classify intent
         with st.spinner("🎯 Analyzing your query..."):
@@ -185,6 +193,7 @@ def _handle_new_query(query: str) -> None:
                     # Low confidence - ask for confirmation
                     log.info("Low confidence, entering confirmation mode")
                     ClarificationManager.enter_confirmation_mode(query, intent_response)
+                    st.session_state["is_processing"] = False
                     st.rerun()
                     return
                 
@@ -192,6 +201,7 @@ def _handle_new_query(query: str) -> None:
                     # Needs specific clarification
                     log.info("Needs clarification, entering clarification mode")
                     ClarificationManager.enter_clarification_mode(query, intent_response)
+                    st.session_state["is_processing"] = False
                     st.rerun()
                     return
                 
@@ -207,6 +217,8 @@ def _handle_new_query(query: str) -> None:
     except Exception as e:
         log.exception(f"Error in new query handler: {e!r}")
         st.error(f"❌ An error occurred: {str(e)}")
+        # Clear processing flag on error
+        st.session_state["is_processing"] = False
 
 
 def _proceed_with_search(query: str, intent_response) -> None:
@@ -230,9 +242,20 @@ def _proceed_with_search(query: str, intent_response) -> None:
                 with st.spinner(f"🔍 Processing {intent_type} query..."):
                     result = execute_intent(query, intent_response)
                 
-                # Display results
+                # Display results in assistant container
                 answer = result.get("answer", "No response generated")
                 data = result.get("data", {})
+                citations = result.get("citations", [])
+                
+                # Use a chat message container for proper formatting
+                with st.chat_message("assistant"):
+                    # Display answer text
+                    st.markdown(answer)
+                    
+                    # Display visual results based on intent type
+                    if data:
+                        st.divider()
+                        render_intent_results(intent_type, data, citations)
                 
                 # Save to chat history
                 log.info("Saving intent-based chat turn to session")
@@ -240,15 +263,15 @@ def _proceed_with_search(query: str, intent_response) -> None:
                 SessionManager.add_chat_turn(
                     query, 
                     answer, 
-                    {"intent_result": data},
+                    {"intent_result": {**data, "citations": citations}},
                     intent=intent_data
                 )
                 
-                # Clear clarification state
+                # Clear clarification state and processing flag
                 SessionManager.clear_clarification_state()
+                st.session_state["is_processing"] = False
                 
-                # Rerun to display the new turn
-                log.info("Chat turn complete, refreshing UI")
+                # Rerun to update chat history display
                 st.rerun()
                 return
         
@@ -279,8 +302,9 @@ def _proceed_with_search(query: str, intent_response) -> None:
         intent_data = intent_response.model_dump() if intent_response else None
         SessionManager.add_chat_turn(query, answer, results, intent=intent_data)
         
-        # Step 4: Clear clarification state
+        # Step 4: Clear clarification state and processing flag
         SessionManager.clear_clarification_state()
+        st.session_state["is_processing"] = False
         
         # Rerun to display the new turn
         log.info("Chat turn complete, refreshing UI")
@@ -290,6 +314,7 @@ def _proceed_with_search(query: str, intent_response) -> None:
         log.exception(f"Error in search and answer workflow: {e!r}")
         st.error(f"❌ An error occurred: {str(e)}")
         SessionManager.clear_clarification_state()
+        st.session_state["is_processing"] = False
 
 
 def _proceed_with_search_without_intent(query: str) -> None:
@@ -312,9 +337,11 @@ def _proceed_with_search_without_intent(query: str) -> None:
         
         SessionManager.add_chat_turn(query, answer, results)
         SessionManager.clear_clarification_state()
+        st.session_state["is_processing"] = False
         st.rerun()
         
     except Exception as e:
         log.exception(f"Error in fallback search: {e!r}")
         st.error(f"❌ An error occurred: {str(e)}")
         SessionManager.clear_clarification_state()
+        st.session_state["is_processing"] = False

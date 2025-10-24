@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import List, Dict
 import streamlit as st
+from ui.components.intent_results import render_intent_results
 
 
 def render_chat_history(history: List[Dict], max_turns: int = 10) -> None:
@@ -21,44 +22,25 @@ def render_chat_history(history: List[Dict], max_turns: int = 10) -> None:
     # Show most recent turns (maintaining order, oldest to newest)
     for turn in history[-max_turns:]:
         # User message
-        with st.container():
-            st.markdown(
-                f"""<div style='background-color: #E3F2FD; padding: 15px; border-radius: 10px; margin: 10px 0;'>
-                    <strong>👤 You:</strong><br>{turn['q']}
-                </div>""",
-                unsafe_allow_html=True
-            )
+        with st.chat_message("user"):
+            st.markdown(turn['q'])
         
         # AI response
-        with st.container():
-            st.markdown(
-                f"""<div style='background-color: #F5F5F5; padding: 15px; border-radius: 10px; margin: 10px 0;'>
-                    <strong>🤖 Assistant:</strong><br>
-                </div>""",
-                unsafe_allow_html=True
-            )
+        with st.chat_message("assistant"):
             st.markdown(turn["a"])
-        
-        # Optional debug info
-        with st.expander("🔍 View search results (debug)", expanded=False):
+            
+            # Check if this turn has intent results
             results = turn.get("results", {})
-            col1, col2 = st.columns(2)
+            intent_result = results.get("intent_result")
             
-            with col1:
-                st.markdown("**Vector Search Results:**")
-                vec_results = results.get("transactions_vector", [])
-                st.write(f"Found {len(vec_results)} results")
-                if vec_results:
-                    for i, hit in enumerate(vec_results[:5], 1):
-                        st.caption(f"{i}. ID: {hit.get('_id')}")
-            
-            with col2:
-                st.markdown("**Keyword Search Results:**")
-                kw_results = results.get("transactions_keyword", [])
-                st.write(f"Found {len(kw_results)} results")
-                if kw_results:
-                    for i, hit in enumerate(kw_results[:5], 1):
-                        st.caption(f"{i}. ID: {hit.get('_id')}")
+            # If we have intent data, render the visual components
+            if intent_result and turn.get("intent"):
+                intent_type = turn["intent"].get("classification", {}).get("intent")
+                if intent_type:
+                    st.divider()
+                    # Extract citations if available
+                    citations = intent_result.get("citations", [])
+                    render_intent_results(intent_type, intent_result, citations)
         
         st.divider()
 

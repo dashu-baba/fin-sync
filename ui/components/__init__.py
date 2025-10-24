@@ -13,6 +13,12 @@ from .clarification_dialog import (
     render_clarification_mode_indicator,
     render_reclassification_progress
 )
+from .intent_results import (
+    render_intent_results,
+    render_aggregate_results,
+    render_trend_results,
+    render_listing_results
+)
 
 __all__ = [
     "render_upload_form",
@@ -28,5 +34,9 @@ __all__ = [
     "render_conversation_context_display",
     "render_clarification_mode_indicator",
     "render_reclassification_progress",
+    "render_intent_results",
+    "render_aggregate_results",
+    "render_trend_results",
+    "render_listing_results",
 ]
 

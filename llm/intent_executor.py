@@ -120,15 +120,22 @@ def _execute_trend(query: str, plan) -> Dict[str, Any]:
     # TODO: Implement compose_trend_answer() for better formatting
     # For now, return simple summary
     buckets = result.get("buckets", [])
+    granularity = result.get("granularity", "monthly")
+    
     if not buckets:
         answer = "No trend data available for the specified period."
     else:
-        answer = f"Trend analysis over {len(buckets)} time periods:\n\n"
-        for bucket in buckets[:10]:  # Show first 10
-            answer += f"• {bucket['date']}: Income ${bucket['income']:,.2f}, Expense ${bucket['expense']:,.2f}, Net ${bucket['net']:,.2f}\n"
+        total_income = sum(b["income"] for b in buckets)
+        total_expense = sum(b["expense"] for b in buckets)
+        total_net = sum(b["net"] for b in buckets)
         
-        if len(buckets) > 10:
-            answer += f"\n... and {len(buckets) - 10} more periods"
+        answer = (
+            f"Analyzed {len(buckets)} {granularity} periods. "
+            f"Total income: ${total_income:,.2f}, "
+            f"Total expenses: ${total_expense:,.2f}, "
+            f"Net: ${total_net:,.2f}. "
+            f"See the chart below for the trend visualization."
+        )
     
     return {
         "intent": "trend",
@@ -161,12 +168,7 @@ def _execute_listing(query: str, plan) -> Dict[str, Any]:
     if not hits:
         answer = "No transactions found matching your criteria."
     else:
-        answer = f"Found {total} transactions. Here are the most recent:\n\n"
-        for hit in hits[:20]:  # Show first 20
-            answer += f"• {hit['date'][:10]}: {hit['type'].upper()} ${hit['amount']:,.2f} - {hit['description'][:50]}\n"
-        
-        if len(hits) > 20:
-            answer += f"\n... and {len(hits) - 20} more transactions in results"
+        answer = f"Found {total} transactions. Displaying the most recent ones in the table below."
     
     return {
         "intent": "listing",
