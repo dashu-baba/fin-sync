@@ -60,6 +60,12 @@ gcloud storage buckets create "gs://${BUCKET_NAME}" \
     --uniform-bucket-level-access \
     2>/dev/null || echo "Bucket already exists"
 
+# Grant Cloud Run service account access to bucket
+echo -e "\n${YELLOW}🔑 Granting Cloud Run service account access to bucket...${NC}"
+SERVICE_ACCOUNT="${PROJECT_ID}@appspot.gserviceaccount.com"
+gsutil iam ch "serviceAccount:${SERVICE_ACCOUNT}:roles/storage.objectAdmin" "gs://${BUCKET_NAME}" \
+    2>/dev/null || echo "Permissions already set"
+
 # Create secrets (if not exist)
 echo -e "\n${YELLOW}🔐 Setting up Secret Manager...${NC}"
 echo "Please enter your Elastic Cloud Endpoint (or press Enter to skip):"

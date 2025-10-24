@@ -41,7 +41,7 @@ steps:
       - '--min-instances'
       - '0'
       - '--set-env-vars'
-      - 'ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID,VERTEX_MODEL_EMBED=text-embedding-004'
+      - 'ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET=$PROJECT_ID-finsync-uploads,VERTEX_MODEL_EMBED=text-embedding-004,USE_SECRET_MANAGER=true'
       - '--set-secrets'
       - 'ELASTIC_API_KEY=ELASTIC_API_KEY:latest,ELASTIC_CLOUD_ENDPOINT=ELASTIC_CLOUD_ENDPOINT:latest'
 
