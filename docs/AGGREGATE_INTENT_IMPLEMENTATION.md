@@ -55,6 +55,8 @@ UI Display (ui/pages/chat_page.py)
 - Reusable and testable
 - Follows ES query DSL best practices
 - Handles all filter types from intent classification
+- **Flexible counterparty matching**: Uses `match` query with `operator: "or"` and `minimum_should_match: "50%"` for better user experience
+- **Currency extraction**: Automatically detects currency from transactions with intelligent fallback
 
 ### 2. `elastic/executors.py`
 **Purpose**: Execute ES queries and transform responses into standardized format
@@ -152,10 +154,25 @@ from .intent_executor import execute_intent
    {"term": {"accountNo": accountNo}}
    ```
 
-3. **Counterparty** (match_phrase on description):
+3. **Counterparty** (flexible match on description):
    ```python
-   {"match_phrase": {"description": counterparty}}
+   {
+       "match": {
+           "description": {
+               "query": counterparty,
+               "operator": "or",              # Any word can match
+               "minimum_should_match": "50%", # At least 50% of words should match
+               "fuzziness": "AUTO"            # Allow minor typos/variations
+           }
+       }
+   }
    ```
+   
+   **Why Flexible Matching?**
+   - Users often add extra words: "Mobile square payment" matches "Mobile square"
+   - Handles variations: "bkash payment" finds "BKASH"
+   - Tolerates typos: "Ubr" finds "Uber"
+   - Natural language friendly: Works even if transaction description differs slightly
 
 4. **Amount Range**:
    ```python
@@ -165,10 +182,40 @@ from .intent_executor import execute_intent
 #### Aggregations Built
 1. **Sum Income**: Filter by `type=credit`, sum `amount`
 2. **Sum Expense**: Filter by `type=debit`, sum `amount`
-3. **Net**: Scripted metric (income - expense)
-4. **Count**: Value count on `_id`
+3. **Net**: Calculated client-side (income - expense) to avoid scripted metrics
+4. **Count**: Value count on `@timestamp`
 5. **Top Merchants**: Terms aggregation on `description.raw`, ordered by total_amount
 6. **Top Categories**: Terms aggregation on `category`, ordered by total_amount
+7. **Currency**: Terms aggregation on `currency` field (size=1) to get most common currency
+
+#### Currency Extraction
+
+The system automatically detects and displays the correct currency:
+
+```python
+# Extract currency (most common)
+currency = "USD"  # Default fallback
+if "currency_terms" in aggs:
+    currency_buckets = aggs["currency_terms"].get("buckets", [])
+    if currency_buckets:
+        currency = currency_buckets[0].get("key", "USD")
+    else:
+        # No results with current filters - fetch currency from ANY transaction
+        fallback_query = {"size": 1, "query": {"match_all": {}}, "_source": ["currency"]}
+        if plan.filters.accountNo:
+            fallback_query["query"] = {"term": {"accountNo": plan.filters.accountNo}}
+        
+        fallback_response = client.search(index=config.elastic_index_transactions, body=fallback_query)
+        fallback_hits = fallback_response.get("hits", {}).get("hits", [])
+        if fallback_hits:
+            currency = fallback_hits[0].get("_source", {}).get("currency", "USD")
+```
+
+**Benefits:**
+- Displays correct currency even when query returns 0 results
+- Falls back to account's currency when no matches found
+- Supports multi-currency accounts
+- Shows proper symbols: ৳ (BDT), $ (USD), € (EUR), etc.
 
 ### Executor Response Format
 

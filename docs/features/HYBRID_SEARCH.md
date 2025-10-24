@@ -80,7 +80,7 @@ User Query: "What overdraft fees apply?"
 
 ```python
 def build_keyword_query(text_terms: list[str], filters: dict = None) -> dict:
-    """Build Elasticsearch BM25 query."""
+    """Build Elasticsearch BM25 query with flexible matching."""
     return {
         "query": {
             "bool": {
@@ -89,8 +89,9 @@ def build_keyword_query(text_terms: list[str], filters: dict = None) -> dict:
                         "match": {
                             "rawText": {
                                 "query": " ".join(text_terms),
-                                "operator": "or",
-                                "fuzziness": "AUTO"  # Handle typos
+                                "operator": "or",              # Any word can match
+                                "minimum_should_match": "50%", # At least 50% of words
+                                "fuzziness": "AUTO"            # Handle typos
                             }
                         }
                     }

@@ -38,6 +38,7 @@ User-facing features and capabilities.
 - **[Analytics Dashboard](./features/ANALYTICS.md)** - Financial insights and visualizations
 - **[Clarification Flow](./features/CLARIFICATION_FLOW.md)** - Interactive query refinement
 - **[Duplicate Protection](./features/DUPLICATE_PROTECTION.md)** - Multi-layer duplicate detection
+- **[UI/UX Improvements](./UI_IMPROVEMENTS.md)** - Plain English confirmations, flexible matching, debug mode
 
 ### 🔧 [Implementation](./implementation/)
 Technical implementation details and code organization.
