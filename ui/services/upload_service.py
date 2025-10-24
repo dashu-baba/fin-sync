@@ -21,96 +21,73 @@ class UploadService:
     @staticmethod
     def check_duplicate_by_hash(
         file_content: bytes,
-        upload_dir: Path,
-        use_storage_backend: bool = False
+        upload_dir: Path = None,
+        use_storage_backend: bool = True
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if a file with the same content hash already exists.
         
         Args:
             file_content: The file content bytes
-            upload_dir: Directory to check for existing files (local mode)
-            use_storage_backend: If True, use storage backend (works with GCS)
+            upload_dir: Directory to check for existing files (deprecated, kept for compatibility)
+            use_storage_backend: If True, use storage backend (default: True)
             
         Returns:
             (is_duplicate, existing_filename)
         """
         file_hash = sha256_bytes(file_content)
         
-        if use_storage_backend:
-            # Use storage backend (works for both local and GCS)
-            try:
-                storage = get_storage_backend()
-                files = storage.list_files()
-                
-                for file_path in files:
-                    if file_path.lower().endswith('.pdf'):
-                        try:
-                            existing_content = storage.read_file(file_path)
-                            existing_hash = sha256_bytes(existing_content)
-                            if existing_hash == file_hash:
-                                filename = Path(file_path).name
-                                log.warning(f"Duplicate file detected by hash: {filename}")
-                                return True, filename
-                        except Exception as e:
-                            log.error(f"Error checking file {file_path}: {e}")
-                            continue
-            except Exception as e:
-                log.error(f"Error using storage backend for duplicate check: {e}")
-                # Fall through to local check
-        
-        # Local filesystem check (development mode or fallback)
-        if upload_dir.exists():
-            for existing_file in upload_dir.glob("*.pdf"):
-                try:
-                    with open(existing_file, "rb") as f:
-                        existing_hash = sha256_bytes(f.read())
-                    if existing_hash == file_hash:
-                        log.warning(f"Duplicate file detected by hash: {existing_file.name}")
-                        return True, existing_file.name
-                except Exception as e:
-                    log.error(f"Error checking file {existing_file}: {e}")
-                    continue
+        # Always use storage backend for consistency
+        try:
+            storage = get_storage_backend()
+            files = storage.list_files()
+            
+            for file_path in files:
+                if file_path.lower().endswith('.pdf'):
+                    try:
+                        existing_content = storage.read_file(file_path)
+                        existing_hash = sha256_bytes(existing_content)
+                        if existing_hash == file_hash:
+                            filename = Path(file_path).name
+                            log.warning(f"Duplicate file detected by hash: {filename}")
+                            return True, filename
+                    except Exception as e:
+                        log.error(f"Error checking file {file_path}: {e}")
+                        continue
+        except Exception as e:
+            log.error(f"Error using storage backend for duplicate check: {e}")
         
         return False, None
     
     @staticmethod
     def check_duplicate_by_name(
         filename: str,
-        upload_dir: Path,
-        use_storage_backend: bool = False
+        upload_dir: Path = None,
+        use_storage_backend: bool = True
     ) -> bool:
         """
         Check if a file with the same name already exists.
         
         Args:
             filename: Name of the file to check
-            upload_dir: Directory to check for existing files (local mode)
-            use_storage_backend: If True, use storage backend (works with GCS)
+            upload_dir: Directory to check for existing files (deprecated, kept for compatibility)
+            use_storage_backend: If True, use storage backend (default: True)
             
         Returns:
             True if file exists, False otherwise
         """
-        if use_storage_backend:
-            # Use storage backend (works for both local and GCS)
-            try:
-                storage = get_storage_backend()
-                files = storage.list_files()
-                # Check if filename exists in the list
-                exists = any(Path(f).name == filename for f in files)
-                if exists:
-                    log.warning(f"Duplicate file detected by name: {filename}")
-                return exists
-            except Exception as e:
-                log.error(f"Error using storage backend for name check: {e}")
-                # Fall through to local check
-        
-        # Local filesystem check (development mode or fallback)
-        target_path = upload_dir / filename
-        exists = target_path.exists()
-        if exists:
-            log.warning(f"Duplicate file detected by name: {filename}")
-        return exists
+        # Always use storage backend for consistency
+        try:
+            storage = get_storage_backend()
+            files = storage.list_files()
+            # Check if filename exists in the list
+            exists = any(Path(f).name == filename for f in files)
+            if exists:
+                log.warning(f"Duplicate file detected by name: {filename}")
+            return exists
+        except Exception as e:
+            log.error(f"Error using storage backend for name check: {e}")
+            return False
     
     @staticmethod
     def validate_files(files: List[UploadedFile]) -> tuple[bool, Optional[str]]:
@@ -135,7 +112,7 @@ class UploadService:
     @staticmethod
     def process_upload(
         file: UploadedFile,
-        upload_dir: Path,
+        upload_dir: Path = None,
         password: Optional[str] = None,
         use_storage_backend: bool = None
     ) -> Optional[Dict]:
@@ -144,7 +121,7 @@ class UploadService:
         
         Args:
             file: Uploaded file from Streamlit
-            upload_dir: Directory for uploads (used in local mode)
+            upload_dir: Directory for uploads (deprecated, kept for compatibility)
             password: Optional password for encrypted PDFs
             use_storage_backend: If True, use storage backend (auto-detects if None)
         
@@ -161,29 +138,22 @@ class UploadService:
         
         # Auto-detect storage backend usage
         if use_storage_backend is None:
-            use_storage_backend = config.environment == "production" and config.gcs_bucket is not None
+            use_storage_backend = True  # Always use storage backend for consistency
         
-        # Save file
+        # Save file using storage backend (no session directories)
         try:
-            if use_storage_backend:
-                # Use storage backend (works for both local and GCS)
-                storage = get_storage_backend()
-                file_obj = BytesIO(file.getvalue())
-                file_path = storage.save_file(file_obj, name)
-                log.info(f"Saved file via storage backend: {file_path}")
-                
-                # For local storage, path is absolute; for GCS it's gs://...
-                # Normalize for consistent metadata
-                if file_path.startswith("gs://"):
-                    display_path = file_path
-                else:
-                    display_path = str(file_path)
+            storage = get_storage_backend()
+            file_obj = BytesIO(file.getvalue())
+            # Save directly to root of storage (no session subdirectories)
+            file_path = storage.save_file(file_obj, name)
+            log.info(f"Saved file via storage backend: {file_path}")
+            
+            # For local storage, path is absolute; for GCS it's gs://...
+            # Normalize for consistent metadata
+            if file_path.startswith("gs://"):
+                display_path = file_path
             else:
-                # Direct local filesystem save (development mode)
-                target_path = upload_dir / name
-                safe_write(target_path, file.getvalue())
-                display_path = str(target_path)
-                log.info(f"Saved file locally: {display_path}")
+                display_path = str(file_path)
         except Exception as e:
             log.error(f"Failed to save {name}: {e}")
             return None
@@ -195,7 +165,7 @@ class UploadService:
             "size_bytes": file.size,
             "size_human": human_size(file.size),
             "path": display_path,
-            "storage_type": "gcs" if use_storage_backend and config.gcs_bucket else "local"
+            "storage_type": "gcs" if config.gcs_bucket and config.environment == "production" else "local"
         }
         log.info(f"Saved upload: {meta}")
         

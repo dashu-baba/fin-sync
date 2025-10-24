@@ -53,26 +53,18 @@ def _handle_upload_and_index(files, password: str) -> None:
                 log.warning(f"Upload validation failed: {error_msg}")
         return
     
-    # Process upload
-    upload_dir = SessionManager.get_upload_dir()
-    
-    # Determine if we should use storage backend (auto-detect)
-    use_storage_backend = config.environment == "production" and config.gcs_bucket is not None
-    log.info(f"Upload mode: {'storage backend (GCS)' if use_storage_backend else 'local filesystem'}")
-    
     # Check for duplicate files before uploading
+    # NOTE: We no longer use session-specific directories to avoid file duplication
     for file in files:
         # Check by filename
-        if UploadService.check_duplicate_by_name(file.name, upload_dir, use_storage_backend):
+        if UploadService.check_duplicate_by_name(file.name):
             st.error(f"❌ File '{file.name}' already exists. Please rename the file or delete the existing one.")
             log.warning(f"Upload blocked: duplicate filename {file.name}")
             return
         
         # Check by content hash
         file_content = file.getvalue()
-        is_duplicate, existing_filename = UploadService.check_duplicate_by_hash(
-            file_content, upload_dir, use_storage_backend
-        )
+        is_duplicate, existing_filename = UploadService.check_duplicate_by_hash(file_content)
         if is_duplicate:
             st.error(
                 f"❌ This file has already been uploaded as '{existing_filename}'. "
@@ -98,11 +90,9 @@ def _handle_upload_and_index(files, password: str) -> None:
         
         for file in files:
             try:
-                # Step 1: Save file
+                # Step 1: Save file (using storage backend, no session directories)
                 status.update(label=f"Saving {file.name}...", state="running")
-                meta = UploadService.process_upload(
-                    file, upload_dir, password, use_storage_backend
-                )
+                meta = UploadService.process_upload(file, password=password)
                 if not meta:
                     st.error(f"❌ Could not save: {file.name}")
                     continue
