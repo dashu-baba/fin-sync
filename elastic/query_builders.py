@@ -108,23 +108,10 @@ def q_aggregate(plan: IntentClassification) -> Dict[str, Any]:
             }
         }
     
-    # Net aggregation (we'll calculate from income - expense)
-    # Or use script aggregation for signed amount
-    if "net" in metrics:
-        query_body["aggs"]["net"] = {
-            "scripted_metric": {
-                "init_script": "state.sum = 0",
-                "map_script": """
-                    if (doc['type.keyword'].value == 'credit') {
-                        state.sum += doc['amount'].value
-                    } else if (doc['type.keyword'].value == 'debit') {
-                        state.sum -= doc['amount'].value
-                    }
-                """,
-                "combine_script": "return state.sum",
-                "reduce_script": "double sum = 0; for (s in states) { sum += s } return sum"
-            }
-        }
+    # Net aggregation
+    # Note: Net is calculated client-side (sum_income - sum_expense) to avoid
+    # scripted metrics which may not be allowed on Elastic Cloud
+    # No aggregation needed here - will be computed in executor
     
     # Count aggregation
     if "count" in metrics:
@@ -249,21 +236,9 @@ def q_trend(plan: IntentClassification) -> Dict[str, Any]:
                         "aggs": {
                             "amount": {"sum": {"field": "amount"}}
                         }
-                    },
-                    "net": {
-                        "scripted_metric": {
-                            "init_script": "state.sum = 0",
-                            "map_script": """
-                                if (doc['type.keyword'].value == 'credit') {
-                                    state.sum += doc['amount'].value
-                                } else if (doc['type.keyword'].value == 'debit') {
-                                    state.sum -= doc['amount'].value
-                                }
-                            """,
-                            "combine_script": "return state.sum",
-                            "reduce_script": "double sum = 0; for (s in states) { sum += s } return sum"
-                        }
                     }
+                    # Note: net will be calculated client-side (income - expense)
+                    # Removed scripted_metric due to Elastic Cloud security restrictions
                 }
             }
         }
@@ -600,21 +575,9 @@ def q_hybrid(user_query: str, plan: IntentClassification, statement_hits: List[D
         }
     
     # Net aggregation
-    if "net" in metrics:
-        query_body["aggs"]["net"] = {
-            "scripted_metric": {
-                "init_script": "state.sum = 0",
-                "map_script": """
-                    if (doc['type.keyword'].value == 'credit') {
-                        state.sum += doc['amount'].value
-                    } else if (doc['type.keyword'].value == 'debit') {
-                        state.sum -= doc['amount'].value
-                    }
-                """,
-                "combine_script": "return state.sum",
-                "reduce_script": "double sum = 0; for (s in states) { sum += s } return sum"
-            }
-        }
+    # Note: Net is calculated client-side (sum_income - sum_expense) to avoid
+    # scripted metrics which may not be allowed on Elastic Cloud
+    # No aggregation needed here - will be computed in executor
     
     # Count aggregation
     if "count" in metrics:

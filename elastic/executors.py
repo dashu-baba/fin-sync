@@ -158,12 +158,17 @@ def execute_trend(plan: IntentClassification) -> Dict[str, Any]:
         
         buckets = []
         for bucket in trend_buckets:
+            income = bucket.get("income", {}).get("amount", {}).get("value", 0.0) or 0.0
+            expense = bucket.get("expense", {}).get("amount", {}).get("value", 0.0) or 0.0
+            # Calculate net client-side (income - expense)
+            net = income - expense
+            
             buckets.append({
                 "date": bucket.get("key_as_string", ""),
                 "timestamp": bucket.get("key", 0),
-                "income": bucket.get("income", {}).get("amount", {}).get("value", 0.0) or 0.0,
-                "expense": bucket.get("expense", {}).get("amount", {}).get("value", 0.0) or 0.0,
-                "net": bucket.get("net", {}).get("value", 0.0) or 0.0,
+                "income": income,
+                "expense": expense,
+                "net": net,
                 "count": bucket.get("doc_count", 0)
             })
         
@@ -579,16 +584,21 @@ def execute_aggregate_filtered_by_text(
         }
         
         # Extract sum_income
+        sum_income = 0.0
         if "sum_income" in aggs:
-            result["aggs"]["sum_income"] = aggs["sum_income"].get("total", {}).get("value", 0.0) or 0.0
+            sum_income = aggs["sum_income"].get("total", {}).get("value", 0.0) or 0.0
+            result["aggs"]["sum_income"] = sum_income
         
         # Extract sum_expense
+        sum_expense = 0.0
         if "sum_expense" in aggs:
-            result["aggs"]["sum_expense"] = aggs["sum_expense"].get("total", {}).get("value", 0.0) or 0.0
+            sum_expense = aggs["sum_expense"].get("total", {}).get("value", 0.0) or 0.0
+            result["aggs"]["sum_expense"] = sum_expense
         
-        # Extract net
-        if "net" in aggs:
-            result["aggs"]["net"] = aggs["net"].get("value", 0.0) or 0.0
+        # Calculate net client-side (income - expense)
+        # This avoids scripted metrics which may not be allowed on Elastic Cloud
+        if "sum_income" in result["aggs"] or "sum_expense" in result["aggs"]:
+            result["aggs"]["net"] = sum_income - sum_expense
         
         # Extract count
         if "transaction_count" in aggs:
