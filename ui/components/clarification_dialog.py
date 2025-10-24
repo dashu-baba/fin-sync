@@ -6,6 +6,72 @@ import streamlit as st
 from models.intent import IntentResponse
 
 
+def _format_intent_as_plain_english(classification) -> str:
+    """
+    Convert intent classification into plain English description.
+    
+    Args:
+        classification: IntentClassification object
+        
+    Returns:
+        Human-readable description of the intent
+    """
+    intent = classification.intent
+    filters = classification.filters
+    metrics = classification.metrics or []
+    
+    # Build the description parts
+    parts = []
+    
+    # Action based on intent
+    if intent == "aggregate":
+        if "sum_expense" in metrics or "sum_amount" in metrics:
+            parts.append("Calculate total spending")
+        elif "sum_income" in metrics:
+            parts.append("Calculate total income")
+        elif "count" in metrics:
+            parts.append("Count transactions")
+        else:
+            parts.append("Calculate totals")
+    
+    elif intent == "aggregate_filtered_by_text":
+        if filters.counterparty:
+            parts.append(f"Calculate spending on **{filters.counterparty}**")
+        else:
+            parts.append("Calculate spending for specific items")
+    
+    elif intent == "text_qa":
+        parts.append("Answer your question about transactions")
+    
+    elif intent == "listing":
+        parts.append("Show a list of transactions")
+    
+    elif intent == "trend":
+        parts.append("Show spending trends")
+    
+    elif intent == "provenance":
+        parts.append("Show which documents contain this transaction")
+    
+    # Add date range if specified
+    if filters.dateFrom and filters.dateTo:
+        parts.append(f"from **{filters.dateFrom}** to **{filters.dateTo}**")
+    elif filters.dateFrom:
+        parts.append(f"starting from **{filters.dateFrom}**")
+    elif filters.dateTo:
+        parts.append(f"up to **{filters.dateTo}**")
+    
+    # Add account filter if specified
+    if filters.accountNo:
+        parts.append(f"for account **{filters.accountNo}**")
+    
+    # Join parts into a sentence
+    if len(parts) == 1:
+        return parts[0]
+    else:
+        return " ".join(parts)
+
+
+
 def render_confirmation_dialog(query: str, intent: IntentResponse) -> Optional[bool]:
     """
     Render a confirmation dialog for low-confidence queries.
@@ -25,8 +91,10 @@ def render_confirmation_dialog(query: str, intent: IntentResponse) -> Optional[b
     with st.container():
         st.markdown("I understood your query as:")
         
-        # Show interpretation
-        col1, col2 = st.columns([1, 3])
+        # Show interpretation in plain English
+        plain_english = _format_intent_as_plain_english(classification)
+        
+        col1, col2 = st.columns([1, 5])
         
         with col1:
             intent_icons = {
@@ -41,19 +109,8 @@ def render_confirmation_dialog(query: str, intent: IntentResponse) -> Optional[b
             st.markdown(f"### {icon}")
         
         with col2:
-            st.markdown(f"**Intent:** {classification.intent.replace('_', ' ').title()}")
-            st.markdown(f"**Confidence:** {classification.confidence:.0%}")
-            
-            # Show key details
-            if classification.filters.dateFrom or classification.filters.dateTo:
-                date_range = f"{classification.filters.dateFrom or '...'} to {classification.filters.dateTo or '...'}"
-                st.markdown(f"**Date Range:** {date_range}")
-            
-            if classification.filters.counterparty:
-                st.markdown(f"**Merchant/Payee:** {classification.filters.counterparty}")
-            
-            if classification.metrics:
-                st.markdown(f"**Metrics:** {', '.join(classification.metrics[:3])}")
+            # Show plain English description
+            st.markdown(f"### {plain_english}")
         
         st.markdown("---")
         st.markdown("**Is this what you're looking for?**")

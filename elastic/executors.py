@@ -102,7 +102,29 @@ def execute_aggregate(plan: IntentClassification) -> Dict[str, Any]:
                 })
             result["aggs"]["top_categories"] = categories
         
-        log.info(f"Aggregate execution complete: {result['aggs']}")
+        # Extract currency (most common)
+        currency = "USD"  # Default fallback
+        if "currency_terms" in aggs:
+            currency_buckets = aggs["currency_terms"].get("buckets", [])
+            if currency_buckets:
+                currency = currency_buckets[0].get("key", "USD")
+            else:
+                # No results with current filters - fetch currency from ANY transaction in the account
+                try:
+                    fallback_query = {"size": 1, "query": {"match_all": {}}, "_source": ["currency"]}
+                    if plan.filters.accountNo:
+                        fallback_query["query"] = {"term": {"accountNo": plan.filters.accountNo}}
+                    
+                    fallback_response = client.search(index=config.elastic_index_transactions, body=fallback_query)
+                    fallback_hits = fallback_response.get("hits", {}).get("hits", [])
+                    if fallback_hits:
+                        currency = fallback_hits[0].get("_source", {}).get("currency", "USD")
+                        log.debug(f"Retrieved currency from fallback query: {currency}")
+                except Exception as e:
+                    log.warning(f"Failed to retrieve currency from fallback query: {e}")
+        
+        result["currency"] = currency
+        log.info(f"Aggregate execution complete: {result['aggs']}, currency: {currency}")
         return result
         
     except Exception as e:
@@ -172,10 +194,32 @@ def execute_trend(plan: IntentClassification) -> Dict[str, Any]:
                 "count": bucket.get("doc_count", 0)
             })
         
+        # Extract currency (most common)
+        currency = "USD"  # Default fallback
+        if "currency_terms" in aggs:
+            currency_buckets = aggs["currency_terms"].get("buckets", [])
+            if currency_buckets:
+                currency = currency_buckets[0].get("key", "USD")
+            else:
+                # No results with current filters - fetch currency from ANY transaction in the account
+                try:
+                    fallback_query = {"size": 1, "query": {"match_all": {}}, "_source": ["currency"]}
+                    if plan.filters.accountNo:
+                        fallback_query["query"] = {"term": {"accountNo": plan.filters.accountNo}}
+                    
+                    fallback_response = client.search(index=config.elastic_index_transactions, body=fallback_query)
+                    fallback_hits = fallback_response.get("hits", {}).get("hits", [])
+                    if fallback_hits:
+                        currency = fallback_hits[0].get("_source", {}).get("currency", "USD")
+                        log.debug(f"Retrieved currency from fallback query: {currency}")
+                except Exception as e:
+                    log.warning(f"Failed to retrieve currency from fallback query: {e}")
+        
         result = {
             "intent": "trend",
             "granularity": plan.granularity,
             "buckets": buckets,
+            "currency": currency,
             "filters_applied": {
                 "dateFrom": plan.filters.dateFrom,
                 "dateTo": plan.filters.dateTo,
@@ -186,7 +230,7 @@ def execute_trend(plan: IntentClassification) -> Dict[str, Any]:
             }
         }
         
-        log.info(f"Trend execution complete: {len(buckets)} buckets")
+        log.info(f"Trend execution complete: {len(buckets)} buckets, currency: {currency}")
         return result
         
     except Exception as e:
@@ -626,7 +670,29 @@ def execute_aggregate_filtered_by_text(
                 })
             result["aggs"]["top_categories"] = categories
         
-        log.info(f"Aggregate filtered by text execution complete: {result['aggs']}")
+        # Extract currency (most common)
+        currency = "USD"  # Default fallback
+        if "currency_terms" in aggs:
+            currency_buckets = aggs["currency_terms"].get("buckets", [])
+            if currency_buckets:
+                currency = currency_buckets[0].get("key", "USD")
+            else:
+                # No results with current filters - fetch currency from ANY transaction in the account
+                try:
+                    fallback_query = {"size": 1, "query": {"match_all": {}}, "_source": ["currency"]}
+                    if plan.filters.accountNo:
+                        fallback_query["query"] = {"term": {"accountNo": plan.filters.accountNo}}
+                    
+                    fallback_response = client.search(index=config.elastic_index_transactions, body=fallback_query)
+                    fallback_hits = fallback_response.get("hits", {}).get("hits", [])
+                    if fallback_hits:
+                        currency = fallback_hits[0].get("_source", {}).get("currency", "USD")
+                        log.debug(f"Retrieved currency from fallback query: {currency}")
+                except Exception as e:
+                    log.warning(f"Failed to retrieve currency from fallback query: {e}")
+        
+        result["currency"] = currency
+        log.info(f"Aggregate filtered by text execution complete: {result['aggs']}, currency: {currency}")
         return result
         
     except Exception as e:

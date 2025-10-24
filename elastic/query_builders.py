@@ -50,11 +50,18 @@ def q_aggregate(plan: IntentClassification) -> Dict[str, Any]:
             }
         })
     
-    # Counterparty filter (match_phrase on description)
+    # Counterparty filter (flexible match on description)
     if plan.filters.counterparty:
+        # Use match with "or" operator and minimum_should_match for flexible matching
+        # This matches if most key words appear, not requiring ALL words
         must_filters.append({
-            "match_phrase": {
-                "description": plan.filters.counterparty
+            "match": {
+                "description": {
+                    "query": plan.filters.counterparty,
+                    "operator": "or",  # Any word can match
+                    "minimum_should_match": "50%",  # At least 50% of words should match
+                    "fuzziness": "AUTO"  # Allow minor typos/variations
+                }
             }
         })
     
@@ -149,6 +156,14 @@ def q_aggregate(plan: IntentClassification) -> Dict[str, Any]:
             }
         }
     
+    # Always add currency aggregation to determine the currency to display
+    query_body["aggs"]["currency_terms"] = {
+        "terms": {
+            "field": "currency",
+            "size": 1  # Get the most common currency
+        }
+    }
+    
     log.debug(f"Built aggregate query: {query_body}")
     return query_body
 
@@ -187,9 +202,19 @@ def q_trend(plan: IntentClassification) -> Dict[str, Any]:
     if plan.filters.accountNo:
         must_filters.append({"term": {"accountNo": plan.filters.accountNo}})
     
-    # Counterparty
+    # Counterparty filter (flexible match on description)
     if plan.filters.counterparty:
-        must_filters.append({"match_phrase": {"description": plan.filters.counterparty}})
+        # Use match instead of match_phrase for more flexible matching
+        must_filters.append({
+            "match": {
+                "description": {
+                    "query": plan.filters.counterparty,
+                    "operator": "or",
+                    "minimum_should_match": "50%",
+                    "fuzziness": "AUTO"
+                }
+            }
+        })
     
     # Amount range
     amount_range: Dict[str, float] = {}
@@ -240,6 +265,13 @@ def q_trend(plan: IntentClassification) -> Dict[str, Any]:
                     # Note: net will be calculated client-side (income - expense)
                     # Removed scripted_metric due to Elastic Cloud security restrictions
                 }
+            },
+            # Always add currency aggregation to determine the currency to display
+            "currency_terms": {
+                "terms": {
+                    "field": "currency",
+                    "size": 1  # Get the most common currency
+                }
             }
         }
     }
@@ -286,9 +318,19 @@ def q_listing(plan: IntentClassification, limit: int = 50, sort_field: str = "@t
     if plan.filters.accountNo:
         must_filters.append({"term": {"accountNo": plan.filters.accountNo}})
     
-    # Counterparty
+    # Counterparty filter (flexible match on description)
     if plan.filters.counterparty:
-        must_filters.append({"match_phrase": {"description": plan.filters.counterparty}})
+        # Use match instead of match_phrase for more flexible matching
+        must_filters.append({
+            "match": {
+                "description": {
+                    "query": plan.filters.counterparty,
+                    "operator": "or",
+                    "minimum_should_match": "50%",
+                    "fuzziness": "AUTO"
+                }
+            }
+        })
     
     # Amount range
     amount_range: Dict[str, float] = {}

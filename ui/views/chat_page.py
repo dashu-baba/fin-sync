@@ -250,9 +250,17 @@ def _proceed_with_search(query: str, intent_response) -> None:
                 data = result.get("data", {})
                 citations = result.get("citations", [])
                 
+                # Strip technical source information from answer
+                # Split at "**Statement Sources:**" to remove the technical details
+                if "**Statement Sources:**" in answer:
+                    answer = answer.split("**Statement Sources:**")[0].strip()
+                    # Also remove the note about aggregation
+                    if "*Note: Transaction amounts were aggregated" in answer:
+                        answer = answer.split("*Note: Transaction amounts were aggregated")[0].strip()
+                
                 # Use a chat message container for proper formatting
                 with st.chat_message("assistant"):
-                    # Display answer text
+                    # Display answer text (without sources)
                     st.markdown(answer)
                     
                     # Display visual results based on intent type

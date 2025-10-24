@@ -4,16 +4,23 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any, List
 from core.utils import format_currency
+from core.config import config
 
 
 def _get_currency_from_results(data: Dict[str, Any]) -> str:
     """Extract currency from result data, defaulting to USD."""
-    # Try to get currency from hits
+    # First, try to get currency from the result object directly (for aggregate queries)
+    if "currency" in data and data["currency"]:
+        return data["currency"]
+    
+    # Fallback: try to get currency from hits (for listing/search queries)
     hits = data.get("hits", [])
     if hits and isinstance(hits, list) and len(hits) > 0:
         currency = hits[0].get("currency")
         if currency:
             return currency
+    
+    # Default to USD if not found
     return "USD"
 
 
@@ -263,24 +270,32 @@ def render_text_qa_results(data: Dict[str, Any], citations: List[Dict[str, Any]]
     if not citations:
         return
     
-    st.subheader("📚 Sources")
-    
-    for i, citation in enumerate(citations[:5], start=1):
-        with st.expander(f"[{i}] {citation.get('source', 'Unknown Source')}"):
-            cols = st.columns([1, 1, 2])
+    # Only show sources in development mode as a debug section
+    if config.environment == "development":
+        with st.expander("🔧 Debug: Statement Sources", expanded=False):
+            st.caption("Technical information about which statements were used (for development/verification)")
             
-            with cols[0]:
-                st.caption("**Page**")
-                st.write(citation.get("page", "N/A"))
-            
-            with cols[1]:
-                st.caption("**Relevance**")
-                score = citation.get("score", 0.0)
-                st.write(f"{score:.1%}")
-            
-            with cols[2]:
-                st.caption("**Statement ID**")
-                st.code(citation.get("statementId", "N/A"), language=None)
+            for i, citation in enumerate(citations[:5], start=1):
+                with st.container():
+                    st.markdown(f"**[{i}] {citation.get('source', 'Unknown Source')}**")
+                    
+                    cols = st.columns([1, 1, 2])
+                    
+                    with cols[0]:
+                        st.caption("**Page**")
+                        st.write(citation.get("page", "N/A"))
+                    
+                    with cols[1]:
+                        st.caption("**Relevance**")
+                        score = citation.get("score", 0.0)
+                        st.write(f"{score:.1%}")
+                    
+                    with cols[2]:
+                        st.caption("**Statement ID**")
+                        st.code(citation.get("statementId", "N/A"), language=None)
+                    
+                    if i < len(citations[:5]):
+                        st.markdown("---")
 
 
 def render_aggregate_filtered_results(data: Dict[str, Any], citations: List[Dict[str, Any]]) -> None:
@@ -291,21 +306,30 @@ def render_aggregate_filtered_results(data: Dict[str, Any], citations: List[Dict
         data: Result data from aggregate_filtered_by_text execution
         citations: Citation/provenance list
     """
-    # Show derived filters used
-    derived_filters = data.get("derived_filters", [])
-    if derived_filters:
-        with st.expander("🔍 Filters Derived from Statements", expanded=False):
-            st.caption("The following terms were extracted from your statements and used to filter transactions:")
-            for i, filter_term in enumerate(derived_filters[:5], start=1):
-                st.markdown(f"{i}. `{filter_term[:100]}`")
-    
     # Render aggregation results
     render_aggregate_results(data)
     
-    # Render citations
-    if citations:
-        st.divider()
-        render_text_qa_results(data, citations)
+    # Show derived filters and citations only in development mode
+    if config.environment == "development":
+        # Show derived filters used
+        derived_filters = data.get("derived_filters", [])
+        if derived_filters or citations:
+            with st.expander("🔧 Debug: Technical Details", expanded=False):
+                if derived_filters:
+                    st.markdown("**Filters Derived from Statements:**")
+                    st.caption("The following terms were extracted from your statements and used to filter transactions:")
+                    for i, filter_term in enumerate(derived_filters[:5], start=1):
+                        st.markdown(f"{i}. `{filter_term[:100]}`")
+                
+                if citations:
+                    if derived_filters:
+                        st.markdown("---")
+                    st.markdown("**Statement Sources:**")
+                    st.caption("Technical information about which statements were used")
+                    for i, citation in enumerate(citations[:5], start=1):
+                        source = citation.get('source', 'Unknown Source')
+                        page = citation.get("page", "N/A")
+                        st.markdown(f"{i}. {source} (Page {page})")
 
 
 def render_provenance_results(data: Dict[str, Any], citations: List[Dict[str, Any]]) -> None:
