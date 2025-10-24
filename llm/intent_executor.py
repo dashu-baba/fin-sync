@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Dict, Any
 from core.logger import get_logger
 from models.intent import IntentResponse
-from elastic.executors import execute_aggregate, execute_trend, execute_listing, execute_text_qa
-from llm.vertex_chat import compose_aggregate_answer, compose_text_qa_answer, chat_vertex
+from elastic.executors import execute_aggregate, execute_trend, execute_listing, execute_text_qa, execute_aggregate_filtered_by_text
+from llm.vertex_chat import compose_aggregate_answer, compose_text_qa_answer, compose_aggregate_filtered_answer, chat_vertex
 
 log = get_logger("llm/intent_executor")
 
@@ -210,16 +210,38 @@ def _execute_aggregate_filtered_by_text(query: str, plan) -> Dict[str, Any]:
     """Execute aggregate_filtered_by_text intent (two-step: semantic search then aggregate)."""
     log.info("Executing aggregate_filtered_by_text intent")
     
-    # TODO: Implement two-step execution:
-    # 1. Semantic search on statements to find relevant merchants/categories
-    # 2. Use those as filters for transaction aggregation
-    log.warning("aggregate_filtered_by_text not fully implemented, using fallback")
+    # Execute two-step query:
+    # Step 1: Semantic search on statements (done internally)
+    # Step 2: Aggregate transactions with derived filters
+    result = execute_aggregate_filtered_by_text(query, plan, size=10)
+    
+    if "error" in result:
+        return {
+            "intent": "aggregate_filtered_by_text",
+            "answer": f"Sorry, I couldn't complete the analysis: {result['error']}",
+            "data": result,
+            "citations": [],
+            "error": result["error"]
+        }
+    
+    # Compose answer with both aggregations and provenance
+    aggs = result.get("aggs", {})
+    provenance = result.get("provenance", [])
+    derived_filters = result.get("derived_filters", [])
+    
+    answer = compose_aggregate_filtered_answer(
+        query, 
+        aggs, 
+        provenance,
+        derived_filters,
+        plan
+    )
     
     return {
         "intent": "aggregate_filtered_by_text",
-        "answer": "Semantic-filtered aggregation is coming soon.",
-        "data": {},
-        "citations": []
+        "answer": answer,
+        "data": result,
+        "citations": provenance  # Return provenance as citations
     }
 
 
@@ -227,13 +249,56 @@ def _execute_provenance(query: str, plan) -> Dict[str, Any]:
     """Execute provenance intent (show source evidence)."""
     log.info("Executing provenance intent")
     
-    # TODO: Implement provenance search
-    log.warning("provenance not fully implemented, using fallback")
+    # Reuse text_qa to find relevant statements and extract provenance
+    # This intent focuses on showing the sources/evidence rather than generating an answer
+    result = execute_text_qa(query, plan, size=10)
+    
+    if "error" in result:
+        return {
+            "intent": "provenance",
+            "answer": f"Sorry, I couldn't find source evidence: {result['error']}",
+            "data": result,
+            "citations": [],
+            "error": result["error"]
+        }
+    
+    chunks = result.get("hits", [])
+    provenance = result.get("provenance", [])
+    
+    if not provenance:
+        return {
+            "intent": "provenance",
+            "answer": "I couldn't find any relevant statements or sources for that query.",
+            "data": result,
+            "citations": []
+        }
+    
+    # Format provenance-focused answer
+    answer_parts = [f"I found {len(provenance)} relevant source(s) in your statements:\n"]
+    
+    for i, prov in enumerate(provenance, start=1):
+        source_info = prov.get("source", "")
+        page = prov.get("page", 1)
+        score = prov.get("score", 0.0)
+        
+        # Get corresponding chunk for context
+        chunk_text = ""
+        if i <= len(chunks):
+            chunk_text = chunks[i-1].get("text", "")[:200]  # First 200 chars
+        
+        answer_parts.append(
+            f"\n**[{i}] {source_info}**\n"
+            f"  - Page: {page}\n"
+            f"  - Relevance Score: {score:.3f}\n"
+            f"  - Preview: {chunk_text}...\n"
+        )
+    
+    answer = "".join(answer_parts)
     
     return {
         "intent": "provenance",
-        "answer": "Source evidence lookup is coming soon.",
-        "data": {},
-        "citations": []
+        "answer": answer,
+        "data": result,
+        "citations": provenance
     }
 

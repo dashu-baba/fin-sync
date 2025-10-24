@@ -454,3 +454,204 @@ def q_text_qa(user_query: str, filters: IntentFilters | None = None, size: int =
         "size": size
     }
 
+
+def q_hybrid(user_query: str, plan: IntentClassification, statement_hits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Build ES query for aggregate_filtered_by_text intent.
+    
+    This is step 2 of a two-step process:
+    1. Text QA found relevant statements
+    2. Now build aggregate query using derived filters from statements
+    
+    Derives merchant filters from statement hits and applies them to transaction aggregation.
+    
+    Args:
+        user_query: Original user query
+        plan: IntentClassification with filters
+        statement_hits: Results from text_qa search on statements
+        
+    Returns:
+        Aggregate query with derived merchant/counterparty filters
+    """
+    log.info(f"Building hybrid aggregate query with {len(statement_hits)} statement hits")
+    
+    # Extract merchant/counterparty terms from statement hits
+    derived_merchants = set()
+    derived_terms = []
+    
+    for hit in statement_hits[:5]:  # Use top 5 statement hits
+        source = hit.get("_source", {})
+        
+        # Try to extract merchant names from summary text or rawText
+        summary = source.get("summary_text", "") or source.get("rawText", "")
+        
+        # Simple extraction: look for common patterns
+        # This could be enhanced with NER or more sophisticated extraction
+        if summary:
+            # Add summary text as search term
+            derived_terms.append(summary[:100])  # Use first 100 chars
+    
+    # Build filters (same as q_aggregate but with additional derived filters)
+    must_filters: List[Dict[str, Any]] = []
+    
+    # Date range filter
+    date_range: Dict[str, str] = {}
+    if plan.filters.dateFrom:
+        date_range["gte"] = plan.filters.dateFrom
+    if plan.filters.dateTo:
+        date_range["lte"] = plan.filters.dateTo
+    
+    if date_range:
+        must_filters.append({
+            "range": {
+                "@timestamp": date_range
+            }
+        })
+    
+    # Account number filter
+    if plan.filters.accountNo:
+        must_filters.append({
+            "term": {
+                "accountNo": plan.filters.accountNo
+            }
+        })
+    
+    # Derived filters from statement hits
+    # Use match_phrase on description with terms from statements
+    should_filters: List[Dict[str, Any]] = []
+    
+    if derived_terms:
+        for term in derived_terms[:3]:  # Use top 3 terms
+            if term.strip():
+                should_filters.append({
+                    "match_phrase": {
+                        "description": {
+                            "query": term,
+                            "slop": 2  # Allow some word distance
+                        }
+                    }
+                })
+    
+    # Fallback: use counterparty from plan if no derived terms
+    if not should_filters and plan.filters.counterparty:
+        should_filters.append({
+            "match_phrase": {
+                "description": plan.filters.counterparty
+            }
+        })
+    
+    # Add should filters as a bool query
+    if should_filters:
+        must_filters.append({
+            "bool": {
+                "should": should_filters,
+                "minimum_should_match": 1
+            }
+        })
+    
+    # Amount range filters
+    amount_range: Dict[str, float] = {}
+    if plan.filters.minAmount is not None:
+        amount_range["gte"] = plan.filters.minAmount
+    if plan.filters.maxAmount is not None:
+        amount_range["lte"] = plan.filters.maxAmount
+    
+    if amount_range:
+        must_filters.append({
+            "range": {
+                "amount": amount_range
+            }
+        })
+    
+    # Build query body (same structure as q_aggregate)
+    query_body: Dict[str, Any] = {
+        "size": 0,  # No hits, only aggregations
+        "query": {
+            "bool": {
+                "must": must_filters if must_filters else [{"match_all": {}}]
+            }
+        },
+        "aggs": {}
+    }
+    
+    # Build aggregations (same as q_aggregate)
+    metrics = plan.metrics or ["sum_income", "sum_expense", "net", "count"]
+    
+    # Income aggregation
+    if "sum_income" in metrics or "income" in metrics:
+        query_body["aggs"]["sum_income"] = {
+            "filter": {"term": {"type": "credit"}},
+            "aggs": {
+                "total": {
+                    "sum": {"field": "amount"}
+                }
+            }
+        }
+    
+    # Expense aggregation
+    if "sum_expense" in metrics or "expense" in metrics:
+        query_body["aggs"]["sum_expense"] = {
+            "filter": {"term": {"type": "debit"}},
+            "aggs": {
+                "total": {
+                    "sum": {"field": "amount"}
+                }
+            }
+        }
+    
+    # Net aggregation
+    if "net" in metrics:
+        query_body["aggs"]["net"] = {
+            "scripted_metric": {
+                "init_script": "state.sum = 0",
+                "map_script": """
+                    if (doc['type.keyword'].value == 'credit') {
+                        state.sum += doc['amount'].value
+                    } else if (doc['type.keyword'].value == 'debit') {
+                        state.sum -= doc['amount'].value
+                    }
+                """,
+                "combine_script": "return state.sum",
+                "reduce_script": "double sum = 0; for (s in states) { sum += s } return sum"
+            }
+        }
+    
+    # Count aggregation
+    if "count" in metrics:
+        query_body["aggs"]["transaction_count"] = {
+            "value_count": {"field": "_id"}
+        }
+    
+    # Top merchants
+    if "top_merchants" in metrics or "merchants" in metrics:
+        query_body["aggs"]["top_merchants"] = {
+            "terms": {
+                "field": "description.raw",
+                "size": 10,
+                "order": {"total_amount": "desc"}
+            },
+            "aggs": {
+                "total_amount": {
+                    "sum": {"field": "amount"}
+                }
+            }
+        }
+    
+    # Top categories
+    if "top_categories" in metrics or "categories" in metrics:
+        query_body["aggs"]["top_categories"] = {
+            "terms": {
+                "field": "category",
+                "size": 10,
+                "order": {"total_amount": "desc"}
+            },
+            "aggs": {
+                "total_amount": {
+                    "sum": {"field": "amount"}
+                }
+            }
+        }
+    
+    log.debug(f"Built hybrid aggregate query with derived filters")
+    return query_body
+

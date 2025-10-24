@@ -275,6 +275,156 @@ Keep the answer clear and concise."""
         return fallback
 
 
+def compose_aggregate_filtered_answer(
+    query: str, 
+    aggs: Dict[str, Any], 
+    provenance: List[Dict[str, Any]],
+    derived_filters: List[str],
+    plan: Any
+) -> str:
+    """
+    Generate natural language answer from aggregate_filtered_by_text results with citations.
+    
+    This combines aggregate results with statement provenance to show:
+    1. The aggregated financial data
+    2. The statement context that informed the filters
+    3. Citations to source statements
+    
+    Args:
+        query: Original user query
+        aggs: Aggregation results from transactions
+        provenance: Provenance from statement search
+        derived_filters: List of filter terms derived from statements
+        plan: IntentClassification plan with filters
+        
+    Returns:
+        Natural language answer with citations
+    """
+    log.info("Composing aggregate filtered by text answer with citations")
+    from vertexai.generative_models import GenerativeModel
+    init_vertex()
+    
+    try:
+        # Build context from aggregation results
+        agg_context = []
+        
+        if "sum_income" in aggs:
+            agg_context.append(f"Total Income: ${aggs['sum_income']:,.2f}")
+        
+        if "sum_expense" in aggs:
+            agg_context.append(f"Total Expenses: ${aggs['sum_expense']:,.2f}")
+        
+        if "net" in aggs:
+            net = aggs['net']
+            net_label = "Net Income" if net >= 0 else "Net Loss"
+            agg_context.append(f"{net_label}: ${abs(net):,.2f}")
+        
+        if "count" in aggs:
+            agg_context.append(f"Total Transactions: {aggs['count']}")
+        
+        if "top_merchants" in aggs and aggs["top_merchants"]:
+            merchants_list = []
+            for m in aggs["top_merchants"][:5]:
+                merchants_list.append(f"  - {m['merchant']}: ${m['total_amount']:,.2f} ({m['count']} transactions)")
+            if merchants_list:
+                agg_context.append("Top Merchants:\n" + "\n".join(merchants_list))
+        
+        if "top_categories" in aggs and aggs["top_categories"]:
+            categories_list = []
+            for c in aggs["top_categories"][:5]:
+                categories_list.append(f"  - {c['category']}: ${c['total_amount']:,.2f} ({c['count']} transactions)")
+            if categories_list:
+                agg_context.append("Top Categories:\n" + "\n".join(categories_list))
+        
+        # Build filters context
+        filters_context = []
+        if hasattr(plan, 'filters'):
+            if plan.filters.dateFrom:
+                filters_context.append(f"From: {plan.filters.dateFrom}")
+            if plan.filters.dateTo:
+                filters_context.append(f"To: {plan.filters.dateTo}")
+            if plan.filters.accountNo:
+                filters_context.append(f"Account: {plan.filters.accountNo}")
+        
+        # Build derived filters context
+        derived_context = []
+        if derived_filters:
+            derived_context.append("Filters derived from your statements:")
+            for i, term in enumerate(derived_filters[:3], start=1):
+                term_short = term[:80] + "..." if len(term) > 80 else term
+                derived_context.append(f"  {i}. Matching: \"{term_short}\"")
+        
+        # Build citations
+        citations_text = []
+        if provenance:
+            for i, prov in enumerate(provenance[:5], start=1):
+                citations_text.append(
+                    f"[{i}] {prov.get('source', '')} (Page {prov.get('page', 1)})"
+                )
+        
+        # Build prompt
+        system_prompt = """You are a financial assistant helping users understand their transaction data.
+You have aggregated transaction data based on filters derived from the user's bank statements.
+Provide clear, concise answers that connect the statement context to the aggregated results.
+Include citations to show which statements informed the analysis."""
+        
+        user_prompt = f"""User question: {query}
+
+Financial Summary (aggregated transactions):
+{chr(10).join(agg_context)}
+
+{chr(10).join(derived_context) if derived_context else ''}
+
+Base Filters:
+{chr(10).join(filters_context) if filters_context else "None"}
+
+Statement Context (what we searched):
+Found {len(provenance)} relevant statement excerpts that helped identify transactions.
+
+Please provide a clear answer that:
+1. Summarizes the aggregated transaction data
+2. Explains that the analysis was based on information from the user's statements
+3. Includes citations [1], [2], etc. to reference which statements informed the analysis
+Keep it concise but informative."""
+        
+        log.debug(f"Aggregate filtered answer prompt: {user_prompt[:500]}...")
+        
+        model = GenerativeModel(cfg.vertex_model_genai)
+        resp = model.generate_content([system_prompt, user_prompt])
+        answer = (resp.text or "").strip() or "(no response)"
+        
+        # Append citations section
+        if citations_text:
+            answer += "\n\n**Statement Sources:**\n" + "\n".join(citations_text)
+            answer += "\n\n*Note: Transaction amounts were aggregated based on patterns found in these statements.*"
+        
+        log.info("Aggregate filtered answer generated successfully")
+        return answer
+        
+    except Exception as e:
+        log.exception(f"Error composing aggregate filtered answer: {e}")
+        
+        # Fallback to simple summary
+        summary_parts = []
+        if "sum_income" in aggs:
+            summary_parts.append(f"Total Income: ${aggs['sum_income']:,.2f}")
+        if "sum_expense" in aggs:
+            summary_parts.append(f"Total Expenses: ${aggs['sum_expense']:,.2f}")
+        if "net" in aggs:
+            summary_parts.append(f"Net: ${aggs['net']:,.2f}")
+        if "count" in aggs:
+            summary_parts.append(f"Transactions: {aggs['count']}")
+        
+        fallback = "Based on information from your statements:\n" + "\n".join(summary_parts)
+        
+        if provenance:
+            fallback += "\n\nSources:\n"
+            for i, prov in enumerate(provenance[:3], start=1):
+                fallback += f"[{i}] {prov.get('source', '')}\n"
+        
+        return fallback if summary_parts else "No data available matching the statement context."
+
+
 def chat_vertex(question: str, statements, transactions) -> str:
     log.info(f"Chatting with Vertex AI: question={question} statements={statements} transactions={transactions}")
     from vertexai.generative_models import GenerativeModel

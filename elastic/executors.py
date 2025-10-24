@@ -5,7 +5,7 @@ from core.logger import get_logger
 from core.config import config
 from models.intent import IntentClassification, IntentResponse
 from elastic.client import es
-from elastic.query_builders import q_aggregate, q_trend, q_listing, q_text_qa
+from elastic.query_builders import q_aggregate, q_trend, q_listing, q_text_qa, q_hybrid
 from elastic.embedding import embed_texts
 
 log = get_logger("elastic/executors")
@@ -457,4 +457,174 @@ def _rrf_fusion(hit_lists: List[List[Dict[str, Any]]], k: int = 10, k_rrf: int =
         doc["_score"] = scores.get(doc.get("_id", ""), 0.0)
     
     return sorted_docs[:k]
+
+
+def execute_aggregate_filtered_by_text(
+    user_query: str, 
+    plan: IntentClassification,
+    size: int = 10
+) -> Dict[str, Any]:
+    """
+    Execute aggregate_filtered_by_text query - two-step execution.
+    
+    Step 1: Semantic search on statements to find relevant context
+    Step 2: Use derived filters from statements to aggregate transactions
+    
+    Args:
+        user_query: User's question
+        plan: IntentClassification with filters and metrics
+        size: Number of statement hits to use for filter derivation
+        
+    Returns:
+        {
+            "intent": "aggregate_filtered_by_text",
+            "aggs": {aggregation results},
+            "provenance": [{statement sources}],
+            "filters_applied": {...},
+            "derived_filters": [list of terms used]
+        }
+    """
+    log.info(f"Executing aggregate_filtered_by_text query: {user_query}")
+    
+    try:
+        client = es()
+        
+        # Step 1: Execute text_qa on statements to find relevant context
+        log.info("Step 1: Searching statements for relevant context")
+        statement_result = execute_text_qa(user_query, plan, size=size)
+        
+        if "error" in statement_result:
+            return {
+                "intent": "aggregate_filtered_by_text",
+                "error": f"Failed to search statements: {statement_result['error']}",
+                "aggs": {},
+                "provenance": []
+            }
+        
+        statement_hits = statement_result.get("hits", [])
+        provenance = statement_result.get("provenance", [])
+        
+        if not statement_hits:
+            log.warning("No statement hits found, falling back to regular aggregate")
+            # Fallback to regular aggregate without derived filters
+            return execute_aggregate(plan)
+        
+        log.info(f"Found {len(statement_hits)} relevant statements")
+        
+        # Step 2: Build aggregate query with derived filters from statements
+        log.info("Step 2: Building aggregate query with derived filters")
+        
+        # Convert statement hits to format expected by q_hybrid
+        # (they're already in the right format with _source, _id, etc.)
+        raw_hits = []
+        for chunk in statement_hits:
+            # Reconstruct ES hit format
+            hit = {
+                "_id": chunk.get("id", ""),
+                "_source": {
+                    "summary_text": chunk.get("text", ""),
+                    "accountNo": chunk.get("accountNo", ""),
+                    "bankName": chunk.get("bankName", ""),
+                    "statementFrom": chunk.get("statementFrom", ""),
+                    "statementTo": chunk.get("statementTo", "")
+                }
+            }
+            raw_hits.append(hit)
+        
+        # Build query with derived filters
+        hybrid_query = q_hybrid(user_query, plan, raw_hits)
+        
+        # Extract derived terms for reporting
+        derived_filters = []
+        query_bool = hybrid_query.get("query", {}).get("bool", {})
+        for must_clause in query_bool.get("must", []):
+            if "bool" in must_clause and "should" in must_clause["bool"]:
+                for should_clause in must_clause["bool"]["should"]:
+                    if "match_phrase" in should_clause:
+                        desc_query = should_clause["match_phrase"].get("description", {})
+                        if isinstance(desc_query, dict):
+                            derived_filters.append(desc_query.get("query", ""))
+                        else:
+                            derived_filters.append(desc_query)
+        
+        log.info(f"Derived {len(derived_filters)} filter terms from statements")
+        
+        # Step 3: Execute aggregate query on transactions
+        log.info("Step 3: Executing aggregate query on transactions")
+        response = client.search(
+            index=config.elastic_index_transactions,
+            body=hybrid_query
+        )
+        
+        log.debug(f"Aggregate response: {response}")
+        
+        # Parse aggregations (same logic as execute_aggregate)
+        aggs = response.get("aggregations", {})
+        
+        result = {
+            "intent": "aggregate_filtered_by_text",
+            "aggs": {},
+            "provenance": provenance,  # From statement search
+            "filters_applied": {
+                "dateFrom": plan.filters.dateFrom,
+                "dateTo": plan.filters.dateTo,
+                "accountNo": plan.filters.accountNo,
+                "counterparty": plan.filters.counterparty,
+                "minAmount": plan.filters.minAmount,
+                "maxAmount": plan.filters.maxAmount
+            },
+            "derived_filters": derived_filters,
+            "total_hits": response.get("hits", {}).get("total", {}).get("value", 0),
+            "statement_context": len(statement_hits)
+        }
+        
+        # Extract sum_income
+        if "sum_income" in aggs:
+            result["aggs"]["sum_income"] = aggs["sum_income"].get("total", {}).get("value", 0.0) or 0.0
+        
+        # Extract sum_expense
+        if "sum_expense" in aggs:
+            result["aggs"]["sum_expense"] = aggs["sum_expense"].get("total", {}).get("value", 0.0) or 0.0
+        
+        # Extract net
+        if "net" in aggs:
+            result["aggs"]["net"] = aggs["net"].get("value", 0.0) or 0.0
+        
+        # Extract count
+        if "transaction_count" in aggs:
+            result["aggs"]["count"] = aggs["transaction_count"].get("value", 0) or 0
+        
+        # Extract top merchants
+        if "top_merchants" in aggs:
+            merchants = []
+            for bucket in aggs["top_merchants"].get("buckets", []):
+                merchants.append({
+                    "merchant": bucket.get("key", ""),
+                    "count": bucket.get("doc_count", 0),
+                    "total_amount": bucket.get("total_amount", {}).get("value", 0.0) or 0.0
+                })
+            result["aggs"]["top_merchants"] = merchants
+        
+        # Extract top categories
+        if "top_categories" in aggs:
+            categories = []
+            for bucket in aggs["top_categories"].get("buckets", []):
+                categories.append({
+                    "category": bucket.get("key", ""),
+                    "count": bucket.get("doc_count", 0),
+                    "total_amount": bucket.get("total_amount", {}).get("value", 0.0) or 0.0
+                })
+            result["aggs"]["top_categories"] = categories
+        
+        log.info(f"Aggregate filtered by text execution complete: {result['aggs']}")
+        return result
+        
+    except Exception as e:
+        log.exception(f"Error executing aggregate_filtered_by_text query: {e}")
+        return {
+            "intent": "aggregate_filtered_by_text",
+            "error": str(e),
+            "aggs": {},
+            "provenance": []
+        }
 

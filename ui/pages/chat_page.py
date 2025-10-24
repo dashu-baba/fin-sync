@@ -223,7 +223,7 @@ def _proceed_with_search(query: str, intent_response) -> None:
             intent_type = intent_response.classification.intent
             
             # Route based on intent type
-            if intent_type in ["aggregate", "trend", "listing", "text_qa"]:
+            if intent_type in ["aggregate", "trend", "listing", "text_qa", "aggregate_filtered_by_text", "provenance"]:
                 # Use new intent execution flow for structured queries
                 log.info(f"Using intent executor for: {intent_type}")
                 
