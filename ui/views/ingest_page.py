@@ -52,6 +52,25 @@ def _handle_upload_and_index(files, password: str) -> None:
     
     # Process upload
     upload_dir = SessionManager.get_upload_dir()
+    
+    # Check for duplicate files before uploading
+    for file in files:
+        # Check by filename
+        if UploadService.check_duplicate_by_name(file.name, upload_dir):
+            st.error(f"❌ File '{file.name}' already exists. Please rename the file or delete the existing one.")
+            log.warning(f"Upload blocked: duplicate filename {file.name}")
+            return
+        
+        # Check by content hash
+        file_content = file.getvalue()
+        is_duplicate, existing_filename = UploadService.check_duplicate_by_hash(file_content, upload_dir)
+        if is_duplicate:
+            st.error(
+                f"❌ This file has already been uploaded as '{existing_filename}'. "
+                f"The content is identical even though the filename may be different."
+            )
+            log.warning(f"Upload blocked: duplicate content hash for {file.name}")
+            return
     gcp_project = config.gcp_project_id or os.getenv("GCP_PROJECT_ID")
     gcp_location = config.gcp_location or os.getenv("GCP_LOCATION", "us-central1")
     idx_statements = config.elastic_index_statements
@@ -86,6 +105,33 @@ def _handle_upload_and_index(files, password: str) -> None:
                     gcp_project=gcp_project,
                     gcp_location=gcp_location
                 )
+                
+                # Step 2.5: Check for duplicate statement in Elasticsearch
+                status.update(label="Checking for duplicate statements...", state="running")
+                account_no = str(parsed.accountNo)
+                statement_from = parsed.statementFrom.isoformat()  # Convert date to string
+                statement_to = parsed.statementTo.isoformat()  # Convert date to string
+                
+                is_duplicate, existing_file = UploadService.check_duplicate_in_elasticsearch(
+                    account_no, statement_from, statement_to
+                )
+                
+                if is_duplicate:
+                    status.update(
+                        label=f"Duplicate statement detected for account {account_no}",
+                        state="error"
+                    )
+                    st.error(
+                        f"❌ A statement for account **{account_no}** covering the period "
+                        f"**{statement_from}** to **{statement_to}** already exists.\n\n"
+                        f"Previously uploaded as: `{existing_file}`\n\n"
+                        f"Please upload a different statement period to avoid duplicate data."
+                    )
+                    log.warning(
+                        f"Upload blocked: duplicate statement for account {account_no}, "
+                        f"period {statement_from} to {statement_to}"
+                    )
+                    return
                 
                 # Step 3: Ensure indices exist
                 status.update(label="Preparing Elasticsearch indices...", state="running")

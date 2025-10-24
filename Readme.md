@@ -16,6 +16,7 @@ FinSync is an intelligent personal finance assistant that automatically **parses
 - Upload multiple password-protected PDF bank statements
 - Automatic extraction using **Gemini 2.5 Pro** (Vertex AI)
 - Support for encrypted PDFs with password decryption
+- **Duplicate detection** - Prevents re-uploading same statements (filename, content hash, and metadata checks)
 - Session-based file management with cleanup
 
 ### 🤖 **AI-Powered Intent System**
@@ -393,6 +394,7 @@ fin-sync/
 │   ├── check_embedding_dim.py
 │   ├── fix_indices.py
 │   ├── test_aggregate_intent.py
+│   ├── test_duplicate_protection.py
 │   ├── test_intent_router.py
 │   ├── verify_aggregate_filtered_by_text_structure.py
 │   ├── verify_aggregate_structure.py
@@ -410,6 +412,7 @@ fin-sync/
 │   ├── CLARIFICATION_FLOW.md
 │   ├── CLARIFICATION_IMPLEMENTATION_SUMMARY.md
 │   ├── COMPLETE_INTENT_SYSTEM.md
+│   ├── DUPLICATE_PROTECTION.md
 │   ├── IMPLEMENTATION_SUMMARY.md
 │   ├── INTENT_CLASSIFICATION.md
 │   ├── PROVENANCE_INTENT_IMPLEMENTATION.md
@@ -479,7 +482,7 @@ See [`docs/COMPLETE_INTENT_SYSTEM.md`](docs/COMPLETE_INTENT_SYSTEM.md) for detai
 
 ---
 
-## 🔒 Security Best Practices
+## 🔒 Security & Data Integrity
 
 - ✅ **Secret Management**: Credentials stored in GCP Secret Manager (production)
 - ✅ **HTTPS Only**: All traffic encrypted via Cloud Run
@@ -488,6 +491,7 @@ See [`docs/COMPLETE_INTENT_SYSTEM.md`](docs/COMPLETE_INTENT_SYSTEM.md) for detai
 - ✅ **No Hardcoded Secrets**: Environment-based configuration
 - ✅ **Session Isolation**: User uploads isolated in session directories
 - ✅ **PDF Encryption Support**: Handles password-protected documents
+- ✅ **Duplicate Detection**: Multi-layer protection prevents duplicate data (filename, hash, metadata)
 
 ---
 
@@ -575,6 +579,9 @@ python scripts/test_intent_router.py
 # Test aggregate queries
 python scripts/test_aggregate_intent.py
 
+# Test duplicate protection
+python scripts/test_duplicate_protection.py
+
 # Verify index structure
 python scripts/verify_aggregate_structure.py
 ```
@@ -590,6 +597,7 @@ python scripts/verify_aggregate_structure.py
 - [`docs/COMPLETE_INTENT_SYSTEM.md`](docs/COMPLETE_INTENT_SYSTEM.md) - Intent system architecture
 - [`docs/AGGREGATE_INTENT_IMPLEMENTATION.md`](docs/AGGREGATE_INTENT_IMPLEMENTATION.md) - Aggregation queries
 - [`docs/TEXT_QA_INTENT_IMPLEMENTATION.md`](docs/TEXT_QA_INTENT_IMPLEMENTATION.md) - QA system
+- [`docs/DUPLICATE_PROTECTION.md`](docs/DUPLICATE_PROTECTION.md) - Duplicate upload protection
 
 ---
 
