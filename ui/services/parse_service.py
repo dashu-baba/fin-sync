@@ -228,13 +228,14 @@ class ParseService:
                 all_statements.append((page.pageNumber, stmt))
         
         for i, (page_num, txn) in enumerate(all_statements):
+            # Generate deterministic transaction ID based on transaction attributes only
+            # This ensures the same transaction always gets the same ID, preventing duplicates
             txn_id = make_id(
                 str(parsed.accountNo),
                 str(txn.statementDate),
-                str(txn.statementPage or page_num),
                 str(txn.statementAmount),
                 txn.statementDescription or "",
-                str(statement_id)
+                str(txn.statementBalance)
             )
             
             # TODO: Embed descriptions if needed

@@ -158,10 +158,12 @@ def _handle_upload_and_index(files, password: str) -> None:
                     gcp_location=gcp_location
                 )
                 
-                for stmt_doc in stmt_docs:
+                # Create transaction docs only once for all pages (not once per page)
+                # Use the first statement doc ID as the parent reference
+                if stmt_docs:
                     tx_docs_batch = ParseService.create_transaction_docs(
                         parsed,
-                        stmt_doc["id"],
+                        stmt_docs[0]["id"],  # Use first statement doc as reference
                         source_file,
                         embed_descriptions=True,  # Always embed
                         gcp_project=gcp_project,
