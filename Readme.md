@@ -656,6 +656,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
+- [ ] **Enhanced Privacy & Security for Vertex AI**
+  - Audit logging and request tracking
+  - Data residency controls
+  - Private VPC endpoints support
+  - Customer-managed encryption keys (CMEK)
+  - Option for self-hosted LLM models
 - [ ] Multi-user authentication with Firebase Auth
 - [ ] Budget tracking and alerts
 - [ ] Spending category auto-tagging with ML
