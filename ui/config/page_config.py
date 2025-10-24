@@ -8,8 +8,7 @@ def setup_page() -> None:
     st.set_page_config(
         page_title="FinSync",
         page_icon="💰",
-        layout="centered",
+        layout="wide",
         initial_sidebar_state="expanded"
     )
-    st.title("💰 FinSync — Personal Finance Manager")
 

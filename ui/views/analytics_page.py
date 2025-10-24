@@ -16,6 +16,9 @@ def render() -> None:
     # Initialize session state
     SessionManager.init_session()
     
+    # Main title
+    st.title("💰 FinSync — Personal Finance Manager")
+    
     # Page header
     st.header("📊 Financial Analytics")
     st.caption("Visualize your financial data with interactive charts and tables")

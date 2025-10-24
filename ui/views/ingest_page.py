@@ -9,7 +9,6 @@ from ui.components import (
     render_upload_form,
     render_file_list,
     render_parse_section,
-    render_sidebar,
 )
 
 log = get_logger("ui/pages/ingest_page")
@@ -19,6 +18,11 @@ def render() -> None:
     """Render the ingest page."""
     # Initialize session state
     SessionManager.init_session()
+    
+    # Main title
+    st.title("💰 FinSync — Personal Finance Manager")
+    st.header("📥 Ingest Bank Statements")
+    st.caption("Upload, parse, and index your bank statements")
     
     # Render upload form
     files, password, submitted = render_upload_form()
@@ -31,9 +35,6 @@ def render() -> None:
     uploads_meta = SessionManager.get_uploads_meta()
     current_password = SessionManager.get_password()
     render_parse_section(uploads_meta, current_password)
-    
-    # Render sidebar
-    render_sidebar()
 
 
 def _handle_upload(files, password: str) -> None:
