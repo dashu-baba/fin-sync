@@ -16,17 +16,20 @@ def render_upload_form() -> Tuple[Optional[List[UploadedFile]], Optional[str], b
     """
     with st.form("upload_form", clear_on_submit=False):
         files = st.file_uploader(
-            "Choose files",
-            type=list(config.allowed_ext),
-            accept_multiple_files=True,
-            help="You can upload multiple statements (PDF or CSV)."
+            "Upload Bank Statement PDF",
+            type=["pdf"],
+            accept_multiple_files=False,
+            help="Upload your bank statement PDF file. Encrypted PDFs are supported."
         )
         password = st.text_input(
             "Password (optional)",
             type="password",
-            help="If your PDFs are encrypted, enter the password here."
+            help="If your PDF is encrypted, enter the password here."
         )
-        submitted = st.form_submit_button("Continue ➜")
+        submitted = st.form_submit_button("Upload ➜")
     
-    return files, password, submitted
+    # Convert single file to list for compatibility
+    files_list = [files] if files else None
+    
+    return files_list, password, submitted
 
