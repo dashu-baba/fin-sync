@@ -6,7 +6,7 @@ import streamlit as st
 from core.logger import get_logger
 from core.config import config
 from ui.services import SessionManager, UploadService
-from ui.components import render_upload_form
+from ui.components import render_upload_form, render_uploaded_files_display
 
 log = get_logger("ui/pages/ingest_page")
 
@@ -27,6 +27,9 @@ def render() -> None:
     # Handle form submission - auto parse and index
     if submitted and files:
         _handle_upload_and_index(files, password)
+    
+    # Display previously uploaded files
+    render_uploaded_files_display()
 
 
 def _handle_upload_and_index(files, password: str) -> None:

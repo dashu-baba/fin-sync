@@ -19,6 +19,7 @@ from .intent_results import (
     render_trend_results,
     render_listing_results
 )
+from .uploaded_files_display import render_uploaded_files_display
 
 __all__ = [
     "render_upload_form",
@@ -38,5 +39,6 @@ __all__ = [
     "render_aggregate_results",
     "render_trend_results",
     "render_listing_results",
+    "render_uploaded_files_display",
 ]
 
