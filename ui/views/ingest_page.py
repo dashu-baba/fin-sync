@@ -4,12 +4,9 @@ from typing import List, Dict
 import streamlit as st
 
 from core.logger import get_logger
+from core.config import config
 from ui.services import SessionManager, UploadService
-from ui.components import (
-    render_upload_form,
-    render_file_list,
-    render_parse_section,
-)
+from ui.components import render_upload_form
 
 log = get_logger("ui/pages/ingest_page")
 
@@ -22,29 +19,28 @@ def render() -> None:
     # Main title
     st.title("💰 FinSync — Personal Finance Manager")
     st.header("📥 Ingest Bank Statements")
-    st.caption("Upload, parse, and index your bank statements")
+    st.caption("Upload your bank statement PDF - it will be automatically parsed and indexed")
     
     # Render upload form
     files, password, submitted = render_upload_form()
     
-    # Handle form submission
-    if submitted:
-        _handle_upload(files, password)
-    
-    # Render parse section if files are uploaded
-    uploads_meta = SessionManager.get_uploads_meta()
-    current_password = SessionManager.get_password()
-    render_parse_section(uploads_meta, current_password)
+    # Handle form submission - auto parse and index
+    if submitted and files:
+        _handle_upload_and_index(files, password)
 
 
-def _handle_upload(files, password: str) -> None:
+def _handle_upload_and_index(files, password: str) -> None:
     """
-    Handle file upload submission.
+    Handle file upload, parse, and index in one flow.
     
     Args:
         files: Uploaded files from Streamlit
         password: Password for encrypted PDFs
     """
+    import os
+    from ui.services import ParseService
+    from elastic.indexer import ensure_statements_index, ensure_transactions_index, ensure_transaction_alias
+    
     # Validate files
     is_valid, error_msg = UploadService.validate_files(files)
     if not is_valid:
@@ -54,38 +50,95 @@ def _handle_upload(files, password: str) -> None:
                 log.warning(f"Upload validation failed: {error_msg}")
         return
     
-    # Process uploads
+    # Process upload
     upload_dir = SessionManager.get_upload_dir()
-    saved_files: List[Dict] = []
-    parsed_info: List[Dict] = []
+    gcp_project = config.gcp_project_id or os.getenv("GCP_PROJECT_ID")
+    gcp_location = config.gcp_location or os.getenv("GCP_LOCATION", "us-central1")
+    idx_statements = config.elastic_index_statements
+    idx_transactions = config.elastic_index_transactions
     
-    for file in files:
-        # Process upload
-        meta = UploadService.process_upload(file, upload_dir, password)
-        if not meta:
-            st.error(f"❌ Could not process: {file.name}")
-            continue
+    with st.status("Processing your bank statement...", expanded=True) as status:
+        # Validate configuration
+        is_valid, error_msg = ParseService.validate_config()
+        if not is_valid:
+            status.update(label=error_msg, state="error")
+            st.error(error_msg)
+            return
         
-        saved_files.append(meta)
+        stmt_docs: List[Dict] = []
+        txn_docs: List[Dict] = []
         
-        # Parse PDF info if applicable
-        if meta["ext"] == "pdf":
-            pdf_info = UploadService.parse_pdf_info(
-                meta["path"],
-                password=password or None
+        for file in files:
+            try:
+                # Step 1: Save file
+                status.update(label=f"Saving {file.name}...", state="running")
+                meta = UploadService.process_upload(file, upload_dir, password)
+                if not meta:
+                    st.error(f"❌ Could not save: {file.name}")
+                    continue
+                
+                # Step 2: Parse with Vertex AI
+                status.update(label=f"Parsing {file.name} with Vertex AI...", state="running")
+                parsed = ParseService.parse_file(
+                    meta["path"],
+                    meta["ext"],
+                    password=password or None,
+                    gcp_project=gcp_project,
+                    gcp_location=gcp_location
+                )
+                
+                # Step 3: Ensure indices exist
+                status.update(label="Preparing Elasticsearch indices...", state="running")
+                ensure_statements_index(idx_statements, vector_dim=config.elastic_vector_dim)
+                ensure_transactions_index(idx_transactions)
+                ensure_transaction_alias(config.elastic_alias_txn_view, idx_transactions)
+                
+                # Step 4: Create documents with embeddings (always enabled)
+                status.update(label="Generating embeddings...", state="running")
+                source_file = os.path.basename(meta["name"])
+                
+                stmt_docs = ParseService.create_statement_docs(
+                    parsed,
+                    source_file,
+                    gcp_project=gcp_project,
+                    gcp_location=gcp_location
+                )
+                
+                for stmt_doc in stmt_docs:
+                    tx_docs_batch = ParseService.create_transaction_docs(
+                        parsed,
+                        stmt_doc["id"],
+                        source_file,
+                        embed_descriptions=True,  # Always embed
+                        gcp_project=gcp_project,
+                        gcp_location=gcp_location
+                    )
+                    txn_docs.extend(tx_docs_batch)
+                
+                status.write(f"✓ Prepared {len(stmt_docs)} statement(s) and {len(txn_docs)} transaction(s)")
+                
+            except Exception as e:
+                log.error(f"Failed to process {file.name}: {e!r}")
+                status.update(label=f"Error processing {file.name}", state="error")
+                st.error(f"❌ Failed to process {file.name}: {str(e)}")
+                return
+        
+        # Step 5: Index to Elasticsearch
+        if stmt_docs or txn_docs:
+            status.update(label="Indexing to Elasticsearch...", state="running")
+            ParseService.index_documents(stmt_docs, txn_docs)
+            
+            status.update(
+                label=f"✅ Complete! Indexed {len(stmt_docs)} statement(s) & {len(txn_docs)} transaction(s).",
+                state="complete"
             )
-            if pdf_info:
-                parsed_info.append(pdf_info)
-            else:
-                st.warning(f"Could not parse {meta['name']}. It will be skipped for now.")
-    
-    # Save to session state
-    if saved_files:
-        SessionManager.set_uploads_meta(saved_files)
-        SessionManager.set_password(password or "")
-        
-        # Display results
-        render_file_list(saved_files, password or "", parsed_info)
-    else:
-        st.error("No valid files were uploaded.")
+            st.success(f"✅ Successfully processed and indexed your bank statement!")
+            st.info(f"📊 {len(stmt_docs)} statement(s) • {len(txn_docs)} transaction(s) indexed")
+            
+            # Save to session
+            SessionManager.set_uploads_meta([meta])
+            SessionManager.set_password(password or "")
+        else:
+            status.update(label="No documents to index.", state="complete")
+            st.warning("No documents found to index.")
 
