@@ -39,24 +39,16 @@ def render(filters: Dict[str, Any]) -> None:
     st.subheader("📊 Charts & Visualizations")
     
     # Create tabs for different chart views
-    chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
+    chart_tab1, chart_tab2 = st.tabs([
         "Monthly Cash Flow",
-        "Category Breakdown",
-        "Trends Analysis",
-        "Account Comparison"
+        "Trends Analysis"
     ])
     
     with chart_tab1:
         _render_monthly_cash_flow(rollup_data, filters)
     
     with chart_tab2:
-        _render_category_breakdown(filters)
-    
-    with chart_tab3:
-        _render_spending_trends(filters)
-    
-    with chart_tab4:
-        _render_account_comparison(filters)
+        _render_spending_trends(rollup_data, filters)
     
     st.divider()
     
@@ -298,82 +290,236 @@ def _render_monthly_cash_flow(rollup_data: List[Dict[str, Any]], filters: Dict[s
         st.plotly_chart(fig_accounts, use_container_width=True)
 
 
-def _render_spending_trends(filters: Dict[str, Any]) -> None:
+def _render_spending_trends(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any]) -> None:
     """Render spending trends over time chart."""
-    st.info("📊 Spending Trends Chart - Skeleton")
-    st.markdown("""
-    **This section will display:**
-    - Line chart showing spending trends over time
-    - Daily/Weekly/Monthly aggregation options
-    - Credit vs Debit comparison
-    - Trend lines and moving averages
-    """)
+    st.markdown("### 📈 Spending & Income Trends")
     
-    # Placeholder for actual chart
-    st.empty()
+    if not rollup_data:
+        st.info("📊 No data available. Please upload and parse some bank statements first.")
+        return
     
-    # Time granularity selector
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        st.selectbox(
-            "Granularity",
-            options=["Daily", "Weekly", "Monthly"],
-            key="spending_trends_granularity"
+    # Convert to DataFrame
+    df = pd.DataFrame(rollup_data)
+    df['month_dt'] = pd.to_datetime(df['month'])
+    df['month_str'] = df['month_dt'].dt.strftime('%Y-%m')
+    
+    # Group by month
+    monthly_summary = df.groupby('month_str').agg({
+        'inflow': 'sum',
+        'outflow': 'sum',
+        'txCount': 'sum'
+    }).reset_index()
+    monthly_summary = monthly_summary.sort_values('month_str')
+    
+    # Calculate cumulative values
+    monthly_summary['cumulative_inflow'] = monthly_summary['inflow'].cumsum()
+    monthly_summary['cumulative_outflow'] = monthly_summary['outflow'].cumsum()
+    monthly_summary['cumulative_net'] = monthly_summary['cumulative_inflow'] - monthly_summary['cumulative_outflow']
+    
+    # Calculate month-over-month growth
+    monthly_summary['inflow_growth'] = monthly_summary['inflow'].pct_change() * 100
+    monthly_summary['outflow_growth'] = monthly_summary['outflow'].pct_change() * 100
+    
+    # Create tabs for different trend views
+    trend_tab1, trend_tab2, trend_tab3 = st.tabs([
+        "Monthly Trends",
+        "Cumulative Trends",
+        "Growth Analysis"
+    ])
+    
+    with trend_tab1:
+        st.markdown("#### Monthly Inflow & Outflow Trends")
+        
+        fig = go.Figure()
+        
+        # Add inflow line
+        fig.add_trace(go.Scatter(
+            x=monthly_summary['month_str'],
+            y=monthly_summary['inflow'],
+            name='Monthly Inflow',
+            mode='lines+markers',
+            line=dict(color='#10b981', width=3),
+            marker=dict(size=8),
+            fill='tonexty',
+            fillcolor='rgba(16, 185, 129, 0.1)'
+        ))
+        
+        # Add outflow line
+        fig.add_trace(go.Scatter(
+            x=monthly_summary['month_str'],
+            y=monthly_summary['outflow'],
+            name='Monthly Outflow',
+            mode='lines+markers',
+            line=dict(color='#ef4444', width=3),
+            marker=dict(size=8),
+            fill='tozeroy',
+            fillcolor='rgba(239, 68, 68, 0.1)'
+        ))
+        
+        fig.update_layout(
+            title="Monthly Cash Flow Trends",
+            xaxis_title="Month",
+            yaxis_title="Amount ($)",
+            hovermode='x unified',
+            height=450,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
-
-
-def _render_category_breakdown(filters: Dict[str, Any]) -> None:
-    """Render category breakdown chart."""
-    st.info("🥧 Category Breakdown Chart - Skeleton")
-    st.markdown("""
-    **This section will display:**
-    - Pie chart or donut chart for expense categories
-    - Bar chart for top spending categories
-    - Category-wise comparison tables
-    - Percentage distribution
-    """)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Show trend statistics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            avg_inflow = monthly_summary['inflow'].mean()
+            st.metric("Avg Monthly Inflow", f"${avg_inflow:,.2f}")
+        with col2:
+            avg_outflow = monthly_summary['outflow'].mean()
+            st.metric("Avg Monthly Outflow", f"${avg_outflow:,.2f}")
+        with col3:
+            avg_net = avg_inflow - avg_outflow
+            st.metric("Avg Monthly Net", f"${avg_net:,.2f}")
     
-    # Placeholder for actual chart
-    st.empty()
-    
-    # Chart type selector
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        st.selectbox(
-            "Chart Type",
-            options=["Pie Chart", "Bar Chart", "Treemap"],
-            key="category_chart_type"
+    with trend_tab2:
+        st.markdown("#### Cumulative Trends")
+        
+        fig = go.Figure()
+        
+        # Add cumulative inflow
+        fig.add_trace(go.Scatter(
+            x=monthly_summary['month_str'],
+            y=monthly_summary['cumulative_inflow'],
+            name='Cumulative Inflow',
+            mode='lines+markers',
+            line=dict(color='#10b981', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Add cumulative outflow
+        fig.add_trace(go.Scatter(
+            x=monthly_summary['month_str'],
+            y=monthly_summary['cumulative_outflow'],
+            name='Cumulative Outflow',
+            mode='lines+markers',
+            line=dict(color='#ef4444', width=3),
+            marker=dict(size=8)
+        ))
+        
+        # Add cumulative net
+        fig.add_trace(go.Scatter(
+            x=monthly_summary['month_str'],
+            y=monthly_summary['cumulative_net'],
+            name='Cumulative Net',
+            mode='lines+markers',
+            line=dict(color='#3b82f6', width=3, dash='dash'),
+            marker=dict(size=8)
+        ))
+        
+        fig.update_layout(
+            title="Cumulative Cash Flow",
+            xaxis_title="Month",
+            yaxis_title="Cumulative Amount ($)",
+            hovermode='x unified',
+            height=450,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
-
-
-def _render_cash_flow(filters: Dict[str, Any]) -> None:
-    """Render cash flow analysis chart."""
-    st.info("💰 Cash Flow Chart - Skeleton")
-    st.markdown("""
-    **This section will display:**
-    - Waterfall chart showing cash flow
-    - Income vs Expenses over time
-    - Running balance line
-    - Cumulative savings trend
-    """)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Show cumulative statistics
+        total_inflow = monthly_summary['cumulative_inflow'].iloc[-1]
+        total_outflow = monthly_summary['cumulative_outflow'].iloc[-1]
+        total_net = monthly_summary['cumulative_net'].iloc[-1]
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Inflow", f"${total_inflow:,.2f}")
+        with col2:
+            st.metric("Total Outflow", f"${total_outflow:,.2f}")
+        with col3:
+            st.metric("Total Net", f"${total_net:,.2f}", 
+                     delta=f"{(total_net/total_inflow*100) if total_inflow > 0 else 0:.1f}% savings rate")
     
-    # Placeholder for actual chart
-    st.empty()
-
-
-def _render_account_comparison(filters: Dict[str, Any]) -> None:
-    """Render account comparison chart."""
-    st.info("🏦 Account Comparison Chart - Skeleton")
-    st.markdown("""
-    **This section will display:**
-    - Side-by-side comparison of different accounts
-    - Balance trends per account
-    - Activity heatmap
-    - Account performance metrics
-    """)
-    
-    # Placeholder for actual chart
-    st.empty()
+    with trend_tab3:
+        st.markdown("#### Month-over-Month Growth")
+        
+        # Filter out first month (no previous month for comparison)
+        growth_data = monthly_summary[1:].copy()
+        
+        if len(growth_data) > 0:
+            fig = go.Figure()
+            
+            # Add inflow growth
+            fig.add_trace(go.Bar(
+                x=growth_data['month_str'],
+                y=growth_data['inflow_growth'],
+                name='Inflow Growth %',
+                marker_color='#10b981',
+                text=growth_data['inflow_growth'].apply(lambda x: f'{x:+.1f}%' if pd.notna(x) else 'N/A'),
+                textposition='auto'
+            ))
+            
+            # Add outflow growth
+            fig.add_trace(go.Bar(
+                x=growth_data['month_str'],
+                y=growth_data['outflow_growth'],
+                name='Outflow Growth %',
+                marker_color='#ef4444',
+                text=growth_data['outflow_growth'].apply(lambda x: f'{x:+.1f}%' if pd.notna(x) else 'N/A'),
+                textposition='auto'
+            ))
+            
+            # Add zero line
+            fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+            
+            fig.update_layout(
+                title="Month-over-Month Growth Rates",
+                xaxis_title="Month",
+                yaxis_title="Growth Rate (%)",
+                barmode='group',
+                hovermode='x unified',
+                height=450,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show growth statistics
+            avg_inflow_growth = growth_data['inflow_growth'].mean()
+            avg_outflow_growth = growth_data['outflow_growth'].mean()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    "Avg Inflow Growth",
+                    f"{avg_inflow_growth:+.1f}%",
+                    delta="Month-over-Month"
+                )
+            with col2:
+                st.metric(
+                    "Avg Outflow Growth",
+                    f"{avg_outflow_growth:+.1f}%",
+                    delta="Month-over-Month"
+                )
+        else:
+            st.info("Need at least 2 months of data to show growth trends.")
 
 
 def _render_transaction_tables(rollup_data: List[Dict[str, Any]], filters: Dict[str, Any]) -> None:
